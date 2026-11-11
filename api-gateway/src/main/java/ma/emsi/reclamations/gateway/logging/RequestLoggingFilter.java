@@ -14,6 +14,10 @@ import reactor.core.publisher.Mono;
 /**
  * Trace chaque requête reçue par la passerelle : méthode, chemin, statut HTTP et durée.
  *
+ * <p>Sécurité : seuls la méthode et le chemin (sans query string) sont écrits. Aucun en-tête
+ * (Authorization, X-User-*) ni paramètre n'est journalisé : le jeton n'apparaît jamais dans les logs.
+ * Placé avant Spring Security, il trace aussi les 401/403 de la passerelle.
+ *
  * <p>C'est un {@link WebFilter} (et non un GlobalFilter de Gateway) pour couvrir aussi les
  * requêtes non routées (actuator, 404) et les erreurs (503 service indisponible). Le statut
  * est lu juste avant l'envoi de la réponse ({@code beforeCommit}), donc c'est le statut final,

@@ -53,6 +53,29 @@ spring:
                 allow-credentials: true
                 max-age: 3600
 
+# Contrôle d'accès à la passerelle (JWT HS256 vérifié avec security.jwt.* de application.yml).
+# - Les requêtes OPTIONS (pré-requêtes CORS) sont toujours publiques.
+# - public-routes : accessibles sans jeton. method facultatif (toutes méthodes si absent).
+# - role-rules    : jeton valide ET l'un des rôles listés (sinon 403). Évaluées dans l'ordre,
+#                   la première règle dont le chemin correspond s'applique.
+# - Tout le reste : jeton valide exigé (sinon 401).
+# Les services en aval gardent leurs propres contrôles (défense en profondeur).
+gateway:
+  security:
+    public-routes:
+      - method: POST
+        path: /api/auth/register
+      - method: POST
+        path: /api/auth/login
+      - method: GET
+        path: /actuator/health/**
+    role-rules:
+      - path: /api/auth/admin/**
+        roles: [ADMIN]
+      # Règles prévues pour les prochains services (décommenter au moment de leur création) :
+      # - path: /api/stats/**
+      #   roles: [AGENT, ADMIN]
+
 management:
   endpoints:
     web:

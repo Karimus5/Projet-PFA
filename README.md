@@ -35,7 +35,7 @@ notepad .env
 | `POSTGRES_USER`, `POSTGRES_PASSWORD` | identifiants PostgreSQL (conteneur + services)      |
 | `POSTGRES_DB`     | base par défaut de l'image (`postgres`) ; les bases des services sont créées par `docker/postgres/init/` |
 | `POSTGRES_PORT`   | port exposé (5432 ; changer si un PostgreSQL local occupe déjà ce port) |
-| `JWT_SECRET`      | **obligatoire**, au moins 32 caractères, partagé avec la gateway     |
+| `JWT_SECRET`      | **obligatoire**, au moins 32 caractères, partagé par auth-service et la gateway (signature / vérification) |
 | `JWT_EXPIRATION`  | durée de validité des jetons (`1h` par défaut)                        |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | compte ADMIN créé au 1er démarrage d'auth-service s'il n'existe aucun admin |
 
@@ -72,7 +72,7 @@ Vérifier : http://localhost:8888/sample-service/default
 ```
 Tableau de bord : http://localhost:8761
 
-**Terminal 3 — API Gateway** (le Config Server fournit les routes)
+**Terminal 3 — API Gateway** (le Config Server fournit les routes ; `JWT_SECRET` requis dans `.env`)
 ```powershell
 .\mvnw.cmd -pl api-gateway spring-boot:run
 ```
@@ -98,7 +98,31 @@ Le frontend n'appelle que la passerelle. Routes définies dans `config-repo/api-
 | `/api/stats/**`  | stats-service        | à venir → 503       |
 
 CORS autorisé pour le frontend React : http://localhost:3000 et http://localhost:5173.
-Chaque requête est tracée dans la console de la gateway : `GET /api/auth/me -> 200 (12 ms)`.
+Chaque requête est tracée dans la console de la gateway : `GET /api/auth/me -> 200 (12 ms)`
+(méthode, chemin, statut, durée ; jamais le jeton ni les en-têtes).
+
+### Sécurité à la passerelle (JWT)
+La gateway vérifie le jeton (signature HS256 avec `JWT_SECRET`, expiration, émetteur) **avant**
+de router la requête. Règles dans `config-repo/api-gateway.yml` (`gateway.security`) :
+
+| Accès                    | Routes |
+|--------------------------|--------|
+| Public (sans jeton)      | `POST /api/auth/register`, `POST /api/auth/login`, `GET /actuator/health`, toutes les pré-requêtes CORS `OPTIONS` |
+| Rôle ADMIN               | `/api/auth/admin/**` (sinon **403**) |
+| Prévu (commenté)         | `/api/stats/**` → AGENT ou ADMIN, à activer avec stats-service |
+| Jeton valide             | tout le reste, ex. `GET/PUT /api/auth/me`, `/api/claims/**` (sinon **401**) |
+
+Erreurs au même format JSON que auth-service :
+`{"timestamp":…,"status":401,"error":"Unauthorized","message":"Authentification requise","path":"/api/auth/me"}`
+(messages : `Authentification requise`, `Jeton invalide ou expiré`, `Accès refusé : droits insuffisants`).
+
+**En-têtes transmis aux services** (requêtes authentifiées) : `X-User-Id` (id utilisateur),
+`X-User-Email`, `X-User-Role`, plus l'en-tête `Authorization` d'origine. Tout en-tête `X-User-*`
+envoyé par le client est **supprimé** : impossible d'usurper une identité ou un rôle.
+
+**Limite connue — pas de révocation des jetons :** la gateway ne consulte pas la base. Un compte
+désactivé, ou dont le rôle a changé, garde un jeton valide jusqu'à son expiration
+(`JWT_EXPIRATION`, 1h par défaut). auth-service refuse toutefois `/api/auth/me` à un compte désactivé.
 
 ## API d'authentification (auth-service, via la gateway)
 
@@ -116,6 +140,34 @@ Chaque requête est tracée dans la console de la gateway : `GET /api/auth/me ->
 Erreurs au format JSON : `{timestamp, status, error, message, path, fieldErrors?}` —
 400 (validation), 401 (non authentifié, identifiants incorrects), 403 (droits insuffisants,
 compte désactivé), 404, 409 (email déjà utilisé).
+
+### Tester avec Invoke-RestMethod (PowerShell)
+```powershell
+$G = "http://localhost:8080"
+$json = "application/json; charset=utf-8"
+# Affiche le code et le corps JSON d'une erreur (PowerShell 5.1 : le corps est dans ErrorDetails)
+function Show-Error { param($e) "{0} {1}" -f [int]$e.Exception.Response.StatusCode, $e.ErrorDetails.Message }
+
+# Inscription et connexion : publiques
+Invoke-RestMethod -Method Post "$G/api/auth/register" -ContentType $json `
+  -Body '{"name":"Client Test","email":"client@test.local","password":"motdepasse123"}'
+$T = (Invoke-RestMethod -Method Post "$G/api/auth/login" -ContentType $json `
+  -Body '{"email":"client@test.local","password":"motdepasse123"}').accessToken
+
+# Sans jeton → 401 (réponse de la gateway)
+try { Invoke-RestMethod "$G/api/auth/me" } catch { Show-Error $_ }
+# Avec jeton → 200 + profil
+Invoke-RestMethod "$G/api/auth/me" -Headers @{ Authorization = "Bearer $T" }
+# Jeton falsifié → 401 « Jeton invalide ou expiré »
+try { Invoke-RestMethod "$G/api/auth/me" -Headers @{ Authorization = "Bearer $($T.Substring(0, $T.Length - 4))AAAA" } } catch { Show-Error $_ }
+# Client sur l'administration → 403, même en ajoutant un faux X-User-Role
+try { Invoke-RestMethod "$G/api/auth/admin/users" -Headers @{ Authorization = "Bearer $T"; "X-User-Role" = "ADMIN" } } catch { Show-Error $_ }
+
+# Admin (remplacer par les valeurs de votre .env) → 200 + liste
+$A = (Invoke-RestMethod -Method Post "$G/api/auth/login" -ContentType $json `
+  -Body '{"email":"VOTRE_ADMIN_EMAIL","password":"VOTRE_ADMIN_PASSWORD"}').accessToken
+Invoke-RestMethod "$G/api/auth/admin/users" -Headers @{ Authorization = "Bearer $A" }
+```
 
 ### Tester avec curl (PowerShell)
 ```powershell

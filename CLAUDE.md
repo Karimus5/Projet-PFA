@@ -14,7 +14,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 |------------------------|----------------------------|-------|----------------|----------|
 | config-server          | Spring Cloud Config (native) | 8888 | —            | fait     |
 | discovery-service      | Eureka Server              | 8761  | —              | fait     |
-| api-gateway            | Spring Cloud Gateway (WebFlux) | 8080 | —          | fait (sans JWT) |
+| api-gateway            | Spring Cloud Gateway (WebFlux) | 8080 | —          | fait (JWT vérifié) |
 | auth-service           | Spring Boot + Security/JWT | 8081  | auth_db        | fait     |
 | claim-service          | Spring Boot + OpenFeign    | 8082  | claim_db       | à faire  |
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
@@ -37,19 +37,42 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   | `/api/claims/**`  | `lb://claim-service` |
   | `/api/stats/**`   | `lb://stats-service` |
 
-  Le chemin est transmis **tel quel** (pas de StripPrefix) : les contrôleurs des services exposent
+  Le chemin est transmis **tel quel** (pas de StripPrefix) ; le JWT est vérifié avant le routage
+  (voir « Sécurité à la passerelle »). Les contrôleurs des services exposent
   donc `/api/auth/...`, `/api/claims/...`, `/api/stats/...`. Le `spring.application.name` de chaque
   service doit correspondre au nom après `lb://`. Service absent d'Eureka → 503 propre.
 - CORS **uniquement à la passerelle** (origines http://localhost:3000 et http://localhost:5173) ;
   ne pas configurer de CORS dans les services en aval (DedupeResponseHeader en filet de sécurité).
-- `RequestLoggingFilter` (WebFilter) : log `MÉTHODE chemin -> statut (durée)` pour chaque requête.
-- Import Config Server **non optionnel** (sans config, pas de routes) → lancer config-server avant.
-- Tests : `src/test/resources/application.yml` remplace la config principale (pas de Config Server ni
-  d'Eureka), charge `../config-repo/api-gateway.yml`, et simule les instances avec
-  `spring.cloud.discovery.client.simple.instances.*` + WireMock.
-- JWT (vérification des jetons à la passerelle) : étape suivante, pas encore fait. Reprendre la même
-  clé que auth-service (voir « JWT » ci-dessous) avec `NimbusReactiveJwtDecoder.withSecretKey(...)`
-  et ajouter l'import `.env` dans `api-gateway/src/main/resources/application.yml`.
+- `RequestLoggingFilter` (WebFilter, avant la sécurité) : log `MÉTHODE chemin -> statut (durée)` ;
+  n'écrit JAMAIS d'en-tête, de query string ni de jeton (vérifié par un test).
+- Import Config Server **non optionnel** (sans config, pas de routes) → lancer config-server avant ;
+  `.env` importé comme dans auth-service (pour `JWT_SECRET`).
+- Tests : `src/test/resources/application.yml` remplace la config principale (pas de Config Server,
+  d'Eureka ni de .env ; secret JWT de test), charge `../config-repo/api-gateway.yml`, simule les
+  instances avec `spring.cloud.discovery.client.simple.instances.*` + WireMock ; jetons de test
+  fabriqués par `TestTokens` (valide, expiré, falsifié, mauvais émetteur).
+
+### Sécurité à la passerelle (package `gateway.security`)
+- `SecurityConfig` : Spring Security réactif (starter oauth2-resource-server, Nimbus), sans état.
+  `NimbusReactiveJwtDecoder` HS256 + validateurs expiration (tolérance 60 s) et émetteur.
+- Règles dans `config-repo/api-gateway.yml` (`gateway.security`, record `GatewaySecurityProperties`) :
+  - toujours public : `OPTIONS` (pré-requêtes CORS) ;
+  - `public-routes` (sans jeton) : `POST /api/auth/register`, `POST /api/auth/login`,
+    `GET /actuator/health/**` (règles par méthode : `GET /api/auth/login` exige un jeton) ;
+  - `role-rules` (jeton + rôle, sinon 403), évaluées dans l'ordre : `/api/auth/admin/**` → ADMIN ;
+    `/api/stats/**` → AGENT, ADMIN prévu en commentaire (à activer avec stats-service) ;
+  - tout le reste (dont `/actuator/info`) : jeton valide, sinon 401.
+  Pour une nouvelle règle : ajouter une entrée dans le YAML (rien à coder).
+- `JsonSecurityErrorHandler` : 401/403 au format `ApiError` d'auth-service, mêmes messages
+  (`Authentification requise`, `Jeton invalide ou expiré`, `Accès refusé : droits insuffisants`),
+  en-tête `WWW-Authenticate: Bearer`.
+- CORS : Spring Security réutilise `GlobalCorsProperties` (même config que la gateway) pour que
+  les 401/403 portent les en-têtes CORS (sinon illisibles par le frontend).
+- `UserHeadersFilter` (GlobalFilter, toutes les routes) : supprime TOUT en-tête `X-User-*` envoyé
+  par le client, puis ajoute `X-User-Id` (sub), `X-User-Email`, `X-User-Role` depuis le jeton
+  validé. `Authorization` est conservé. Les futurs services peuvent lire ces en-têtes, mais
+  doivent garder leurs propres contrôles (défense en profondeur ; ils ne sont pas exposés
+  directement, seule la gateway l'est).
 
 ## auth-service (port 8081, base auth_db)
 - Packages : `user` (entité `User`, enum `Role`, dépôt), `service` (`AuthService`, `UserService`),
@@ -84,8 +107,11 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   `security.jwt.expiration` (`JWT_EXPIRATION`, défaut 1h) dans `config-repo/auth-service.yml`.
 - Claims : `iss` = `reclamations-auth-service`, `sub` = id utilisateur, `email`, `role`
   (CLIENT | AGENT | ADMIN → autorité `ROLE_<role>`), `iat`, `exp`.
-- Pas de révocation : un changement de rôle prend effet au prochain login ; un compte désactivé
-  est refusé par auth-service (/me) mais son jeton reste techniquement valide jusqu'à `exp`.
+- Vérifié à la gateway (`NimbusReactiveJwtDecoder`) ET dans auth-service (`NimbusJwtDecoder`).
+- **Limite connue — pas de révocation** : la gateway ne consulte pas la base. Un compte désactivé
+  (ou dont le rôle a changé) garde un jeton valide jusqu'à `exp` (`JWT_EXPIRATION`, 1h par défaut) ;
+  seul auth-service le bloque sur `/me`. Pistes si besoin : durée courte, liste de révocation.
+- Ne jamais afficher `JWT_SECRET` (logs, tests, doc) ni lire `.env` à voix haute.
 
 ## Variables d'environnement (.env à la racine, modèle .env.example)
 - Lecture : Docker Compose lit `.env` ; les services Spring l'importent avec
@@ -149,7 +175,7 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 
 ## Ordre de développement prévu (cahier des charges §12)
 1. ✅ Socle : config-server, discovery-service, docker-compose (PostgreSQL).
-2. ✅ api-gateway (routes, CORS, logs) ; ✅ auth-service (BF1–BF5, BF21) ; ⏳ vérification JWT à la gateway.
+2. ✅ api-gateway (routes, CORS, logs) ; ✅ auth-service (BF1–BF5, BF21) ; ✅ vérification JWT à la gateway.
 3. claim-service (BF6–BF15, BF23), notification-service (BF10), stats-service (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service + jeu de données + notebook d'évaluation (BF16–BF20, objectif ≥ 85 % accuracy / F1 macro).
 5. Frontend React (interfaces client, agent, admin, tableau de bord).

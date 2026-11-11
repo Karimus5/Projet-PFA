@@ -25,13 +25,13 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 /**
- * Démarre la passerelle sur un port aléatoire, SANS Config Server ni Eureka :
+ * Routage, CORS, actuator et journalisation de la passerelle, SANS Config Server ni Eureka :
  * <ul>
- *   <li>les routes et le CORS sont chargés depuis le vrai fichier ../config-repo/api-gateway.yml ;</li>
- *   <li>la découverte Eureka est remplacée par une liste statique (SimpleDiscoveryClient) où
- *       « claim-service » pointe vers un serveur WireMock factice ;</li>
+ *   <li>routes, CORS et règles de sécurité : vrai fichier ../config-repo/api-gateway.yml ;</li>
+ *   <li>« claim-service » pointe vers un serveur WireMock factice (SimpleDiscoveryClient) ;</li>
  *   <li>« stats-service » n'a aucune instance, pour vérifier la réponse 503.</li>
  * </ul>
+ * Les scénarios JWT détaillés sont dans GatewaySecurityTests.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT) // config : src/test/resources/application.yml
 @ExtendWith(OutputCaptureExtension.class)
@@ -57,6 +57,8 @@ class ApiGatewayApplicationTests {
     @Autowired
     private WebTestClient webClient;
 
+    private final String clientToken = TestTokens.valid(10, "client@test.local", "CLIENT");
+
     @BeforeEach
     void resetStubs() {
         claimService.resetAll();
@@ -76,6 +78,7 @@ class ApiGatewayApplicationTests {
                         .withBody("{\"source\":\"claim-service-factice\"}")));
 
         webClient.get().uri("/api/claims/test")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + clientToken)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody().jsonPath("$.source").isEqualTo("claim-service-factice");
@@ -87,12 +90,13 @@ class ApiGatewayApplicationTests {
     @Test
     void returns503WhenServiceHasNoInstance() {
         webClient.get().uri("/api/stats/test")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + clientToken)
                 .exchange()
                 .expectStatus().isEqualTo(503);
     }
 
     @Test
-    void corsPreflightAllowedForReactFrontend() {
+    void corsPreflightAllowedForReactFrontendWithoutToken() {
         webClient.method(HttpMethod.OPTIONS).uri("/api/claims/test")
                 .header(HttpHeaders.ORIGIN, "http://localhost:5173")
                 .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
@@ -112,7 +116,17 @@ class ApiGatewayApplicationTests {
     }
 
     @Test
-    void healthIsUp() {
+    void unauthorizedResponseCarriesCorsHeadersForFrontend() {
+        // Sans en-têtes CORS sur le 401, le navigateur masquerait l'erreur au frontend React.
+        webClient.get().uri("/api/claims/test")
+                .header(HttpHeaders.ORIGIN, "http://localhost:3000")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000");
+    }
+
+    @Test
+    void healthIsPublicAndUp() {
         webClient.get().uri("/actuator/health")
                 .accept(MediaType.APPLICATION_JSON)
                 .exchange()
@@ -121,9 +135,16 @@ class ApiGatewayApplicationTests {
     }
 
     @Test
-    void logsMethodPathAndStatus(CapturedOutput output) {
-        webClient.get().uri("/api/stats/log-test").exchange().expectStatus().isEqualTo(503);
+    void logsMethodPathAndStatusButNeverTheToken(CapturedOutput output) {
+        webClient.get().uri("/api/stats/log-test")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + clientToken)
+                .exchange()
+                .expectStatus().isEqualTo(503);
+        webClient.get().uri("/api/claims/log-test-401").exchange().expectStatus().isUnauthorized();
 
-        assertThat(output).contains("GET /api/stats/log-test -> 503");
+        assertThat(output)
+                .contains("GET /api/stats/log-test -> 503")
+                .contains("GET /api/claims/log-test-401 -> 401")
+                .doesNotContain(clientToken);
     }
 }

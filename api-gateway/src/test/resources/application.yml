@@ -1,7 +1,8 @@
 # Configuration utilisée UNIQUEMENT par les tests : ce fichier remplace src/main/resources/application.yml
 # (il est trouvé en premier dans le classpath de test).
-# Pas de Config Server ni d'Eureka : on charge directement le vrai fichier de routes/CORS du config-repo
-# (Maven exécute les tests depuis le dossier du module, d'où le ../).
+# Pas de Config Server, ni d'Eureka, ni de .env : on charge directement le vrai fichier de
+# routes / CORS / règles de sécurité du config-repo (Maven exécute les tests depuis le dossier
+# du module, d'où le ../). Les instances des services sont simulées dans le test (WireMock).
 
 server:
   port: 0
@@ -18,3 +19,9 @@ spring:
 eureka:
   client:
     enabled: false
+
+# Paramètres JWT de TEST (en production : config-repo/application.yml + JWT_SECRET du .env).
+security:
+  jwt:
+    secret: secret-de-test-gateway-uniquement-0123456789
+    issuer: reclamations-auth-service

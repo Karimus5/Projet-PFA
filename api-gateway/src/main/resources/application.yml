@@ -5,8 +5,13 @@ spring:
   application:
     name: api-gateway
   config:
-    # Routes, CORS et paramètres Eureka viennent du Config Server
-    # (config-repo/api-gateway.yml + config-repo/application.yml).
-    # Import NON optionnel : sans Config Server la passerelle n'aurait aucune route,
-    # on préfère qu'elle refuse de démarrer. Lancer config-server en premier.
-    import: configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    import:
+      # Routes, CORS, règles de sécurité et paramètres JWT/Eureka viennent du Config Server
+      # (config-repo/api-gateway.yml + config-repo/application.yml).
+      # Import NON optionnel : sans Config Server la passerelle n'aurait aucune route,
+      # on préfère qu'elle refuse de démarrer. Lancer config-server en premier.
+      - configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      # JWT_SECRET (partagé avec auth-service) lu depuis le .env à la racine du monorepo :
+      # ../.env quand on lance depuis le module (mvnw), ./.env depuis l'IDE (racine).
+      - optional:file:../.env[.properties]
+      - optional:file:./.env[.properties]
