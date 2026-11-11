@@ -3,8 +3,9 @@
 PFA 2026-2027 — architecture microservices (Spring Boot / Spring Cloud) et classification par IA.
 Cahier des charges : [`docs/cahier-des-charges.pdf`](docs/cahier-des-charges.pdf).
 
-**État actuel :** `config-server` (8888), `discovery-service` / Eureka (8761), `api-gateway` (8080)
-et `auth-service` (8081, PostgreSQL `auth_db`).
+**État actuel :** `config-server` (8888), `discovery-service` / Eureka (8761), `api-gateway` (8080),
+`auth-service` (8081, PostgreSQL `auth_db`) et le **frontend React** (5173 : connexion, inscription,
+profil, gestion des utilisateurs).
 
 **Mode d'exécution :** l'application s'exécute en local. Docker Compose ne lance que les bases de
 données et le broker de messages ; les services tournent directement avec Maven (et plus tard
@@ -14,6 +15,7 @@ Python et Node), sans conteneur.
 - JDK 17 ou plus récent (testé avec JDK 25), avec `JAVA_HOME` pointant dessus.
 - Docker Desktop (uniquement pour PostgreSQL).
 - Maven n'est pas nécessaire : le projet fournit le wrapper `mvnw.cmd`.
+- Node.js ≥ 22.12 et npm (testé avec Node 22.20 / npm 10.9) pour le frontend.
 
 Vérifier / corriger `JAVA_HOME` dans PowerShell (pour la session en cours) :
 ```powershell
@@ -50,6 +52,7 @@ Format du fichier : `CLE=valeur`, sans guillemets ni espaces autour de `=`, sans
 .\mvnw.cmd clean verify
 ```
 Les tests n'ont besoin ni de Docker ni des autres services (H2 en mémoire pour auth-service).
+Frontend : `cd frontend; npm test; npm run build`.
 
 ## Lancer la plateforme (dans cet ordre)
 Attendre que chaque service affiche `Started ...Application` avant de lancer le suivant.
@@ -87,6 +90,62 @@ Au premier démarrage, Flyway crée la table `users` et le compte ADMIN initial 
 
 Depuis IntelliJ : lancer `ConfigServerApplication`, `DiscoveryServiceApplication`,
 `ApiGatewayApplication`, puis `AuthServiceApplication` (répertoire de travail = racine du projet).
+
+**Terminal 5 — Frontend React** (une fois la gateway et auth-service démarrés)
+```powershell
+cd frontend
+npm install        # la première fois seulement
+npm run dev
+```
+Ouvrir http://localhost:5173 (port imposé : c'est l'origine autorisée par le CORS de la gateway).
+
+## Frontend (`frontend/`)
+Vite + React 19 + React Router 7 + Tailwind CSS 4, en JavaScript. Le frontend n'appelle **que**
+l'API Gateway.
+
+| Commande          | Rôle |
+|-------------------|------|
+| `npm run dev`     | serveur de développement sur http://localhost:5173 |
+| `npm test`        | tests Vitest + Testing Library (aucun backend nécessaire : API simulée) |
+| `npm run build`   | build de production dans `frontend/dist/` |
+
+**Variable d'environnement** : `VITE_API_URL` (défaut `http://localhost:8080`). Pour la changer,
+copier `frontend/.env.example` en `frontend/.env`.
+
+**Pages** : `/connexion`, `/inscription` (validation côté client : email valide, mot de passe de
+8 caractères minimum), `/profil` (modifier son nom, changer son mot de passe en saisissant l'ancien),
+`/admin/utilisateurs` (ADMIN : liste, création d'un agent ou admin, changement de rôle,
+activation/désactivation), `/403`, et une page 404. La barre de navigation s'adapte au rôle et
+affiche « Bientôt » pour les futures pages de réclamations et de statistiques.
+
+**Authentification** :
+- le jeton est stocké à un seul endroit (`src/auth/tokenStorage.js`) et ajouté automatiquement
+  à chaque appel (`src/api/client.js`) ;
+- le rôle est lu depuis `GET /api/auth/me` (profil renvoyé par le serveur), jamais décodé du jeton ;
+  il ne sert qu'à l'affichage et à la navigation : la vraie protection reste la gateway et l'auth-service ;
+- tout 401 reçu avec un jeton (expiré, invalide) déconnecte et renvoie vers la connexion.
+
+**Compromis sur le stockage du jeton** : `sessionStorage`. Le jeton survit au rechargement de la
+page et disparaît à la fermeture de l'onglet, mais il reste lisible par du JavaScript : une faille
+XSS permettrait de le voler (React échappe l'affichage par défaut, ce qui limite ce risque).
+L'alternative plus sûre — un cookie `HttpOnly` posé par le serveur, avec protection CSRF —
+demanderait de modifier l'auth-service et la gateway ; elle pourra être adoptée plus tard en ne
+changeant que `tokenStorage.js` et `client.js` côté frontend.
+
+**Structure** :
+```
+frontend/
+  index.html, vite.config.js, package.json, .env.example
+  src/
+    main.jsx, AppRoutes.jsx      point d'entrée et plan des routes
+    config.js, navigation.js     URL de l'API, libellés des rôles, menu par rôle
+    api/                         client HTTP (client.js) et endpoints (authApi.js)
+    auth/                        jeton, contexte d'authentification, routes protégées
+    components/                  mise en page, barre de navigation, champs, alertes
+    pages/                       connexion, inscription, profil, admin, 403/404
+    utils/                       validation et formatage
+    test/                        tests Vitest et utilitaires
+```
 
 ## Routes de l'API Gateway (port 8080)
 Le frontend n'appelle que la passerelle. Routes définies dans `config-repo/api-gateway.yml` :
@@ -219,6 +278,7 @@ config-server/        Spring Cloud Config Server — port 8888
 discovery-service/    Eureka Server — port 8761
 api-gateway/          Spring Cloud Gateway — port 8080
 auth-service/         comptes, JWT, rôles — port 8081 (base auth_db)
+frontend/             React + Vite + Tailwind — port 5173
 docker/postgres/init/ création des bases PostgreSQL (une par service)
 docs/                 cahier des charges
 docker-compose.yml    PostgreSQL

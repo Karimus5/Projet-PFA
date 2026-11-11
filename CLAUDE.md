@@ -20,7 +20,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
 | ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | à faire  |
-| frontend               | React                      | 5173  | —              | à faire  |
+| frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth + admin) |
 
 Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-service avec timeout + repli ;
 événements asynchrones RabbitMQ pour notifications et statistiques.
@@ -101,6 +101,30 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Tests : `src/test/resources/application.yml` (H2 mode PostgreSQL, pas de Config Server/Eureka/.env),
   tests unitaires Mockito (`service/`) et intégration MockMvc (`web/AuthApiIntegrationTest`).
 
+## Frontend (`frontend/`, port 5173)
+- Vite 8, React 19, react-router 7.18 (pas 8 : exige Node ≥ 22.22, la machine a 22.20), Tailwind CSS 4
+  (plugin `@tailwindcss/vite`, classes réutilisables `btn-*`, `input`, `card` en `@utility` dans
+  `src/index.css`). JavaScript (pas TypeScript). `fetch` natif, pas d'axios. Versions EXACTES dans
+  package.json. Tests : Vitest 5 + Testing Library + jsdom 29 (jsdom 31 exige Node ≥ 22.22).
+- Lancement : `cd frontend; npm install; npm run dev` ; `npm test` ; `npm run build`.
+- `VITE_API_URL` (défaut http://localhost:8080, modèle `frontend/.env.example`) : le frontend
+  n'appelle QUE la gateway.
+- Structure `src/` : `api/client.js` (fetch + `ApiError` + 401 centralisé), `api/authApi.js`
+  (endpoints, alignés sur Dtos.java), `auth/tokenStorage.js` (SEUL accès au jeton),
+  `auth/AuthContext.jsx` (user lu via GET /me), `auth/RouteGuards.jsx` (`ProtectedRoute roles`,
+  `GuestOnlyRoute`, `HomeRedirect`), `navigation.js` (menu par rôle + emplacements « Bientôt »),
+  `components/`, `pages/`, `utils/` (validation identique au backend, format de date),
+  `test/` (setup, `renderApp`, `mockApi`).
+- Routes : `/connexion`, `/inscription`, `/profil`, `/admin/utilisateurs` (ADMIN), `/403`, `*` (404).
+- Règles : rôle uniquement depuis GET /api/auth/me (jamais décodé du JWT) ; tout 401 reçu AVEC un
+  jeton → déconnexion + /connexion (« session expirée ») ; un 401 sans jeton (mauvais mot de passe)
+  est juste affiché. Erreurs : `err.message` + `err.fieldErrors` (champ → message) ; 409 → champ email.
+- Jeton en `sessionStorage` (compromis documenté dans tokenStorage.js et le README : survit au
+  rechargement, effacé à la fermeture de l'onglet, mais lisible en cas de XSS ; alternative =
+  cookie HttpOnly, nécessite de modifier le backend).
+- Futures pages de réclamations : ajouter la route dans `AppRoutes.jsx` et passer l'entrée
+  correspondante de `navigation.js` à `available: true` avec un `to`.
+
 ## JWT (contrat partagé entre auth-service et la gateway)
 - HS256 ; clé = octets UTF-8 de `JWT_SECRET` (≥ 32 caractères, aucune valeur par défaut).
 - `security.jwt.secret` et `security.jwt.issuer` sont dans `config-repo/application.yml` (PARTAGÉ) ;
@@ -135,7 +159,7 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Livrable : « application exécutable en local, avec un guide de lancement (README) » → tenir
   `README.md` à jour à chaque nouveau service (commande de lancement, port, URL de vérification).
 - Ordre de démarrage : `docker compose up -d postgres` → config-server → discovery-service →
-  api-gateway → auth-service → autres services.
+  api-gateway → auth-service → autres services → frontend (`npm run dev`).
 - Une base PostgreSQL par service, créée par `docker/postgres/init/01-create-databases.sql` (une
   ligne par service ; script exécuté seulement si le volume est vide, sinon lancer la ligne à la main).
   Un seul utilisateur PostgreSQL (`POSTGRES_USER`) pour toutes les bases en développement.
@@ -167,6 +191,7 @@ config-server/       Spring Cloud Config Server (profil native)
 discovery-service/   serveur Eureka
 api-gateway/         Spring Cloud Gateway (réactif) — routes, CORS, journalisation
 auth-service/        comptes, login JWT, rôles, administration des utilisateurs
+frontend/            React (Vite, Tailwind) — npm, hors Maven
 docs/                cahier des charges et conception
 docker/postgres/init scripts SQL de création des bases (une par service)
 docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
@@ -178,7 +203,8 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 2. ✅ api-gateway (routes, CORS, logs) ; ✅ auth-service (BF1–BF5, BF21) ; ✅ vérification JWT à la gateway.
 3. claim-service (BF6–BF15, BF23), notification-service (BF10), stats-service (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service + jeu de données + notebook d'évaluation (BF16–BF20, objectif ≥ 85 % accuracy / F1 macro).
-5. Frontend React (interfaces client, agent, admin, tableau de bord).
+5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; à venir : pages
+   réclamations client/agent/admin et tableau de bord.
 6. Tests d'intégration, charge, évaluation du modèle.
 7. Documentation (OpenAPI/Swagger), rapport, soutenance.
 
