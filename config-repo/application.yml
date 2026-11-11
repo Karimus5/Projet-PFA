@@ -13,3 +13,13 @@ management:
     web:
       exposure:
         include: health,info
+
+# Paramètres JWT PARTAGÉS : auth-service signe les jetons, api-gateway (étape suivante) et les
+# autres services les vérifieront avec la même clé.
+# - Algorithme : HS256 ; clé = octets UTF-8 de JWT_SECRET (au moins 32 caractères).
+# - Claims : iss = issuer ci-dessous, sub = id utilisateur, email, role (CLIENT | AGENT | ADMIN).
+# - JWT_SECRET n'a volontairement AUCUNE valeur par défaut : chaque service la lit depuis .env.
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: ${JWT_ISSUER:reclamations-auth-service}

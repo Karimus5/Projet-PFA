@@ -1,0 +1,27 @@
+# Configuration centralisée d'auth-service (port 8081).
+# Les ${...} sont résolus côté auth-service, depuis les variables d'environnement ou le fichier .env.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/auth_db
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Le schéma est géré UNIQUEMENT par Flyway (src/main/resources/db/migration) ;
+      # Hibernate se contente de vérifier qu'il correspond aux entités.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+security:
+  jwt:
+    expiration: ${JWT_EXPIRATION:1h}
+
+# Compte ADMIN créé au démarrage s'il n'existe aucun admin (valeurs dans .env).
+bootstrap:
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    name: ${ADMIN_NAME:Administrateur}

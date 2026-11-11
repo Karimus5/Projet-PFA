@@ -15,7 +15,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | config-server          | Spring Cloud Config (native) | 8888 | —            | fait     |
 | discovery-service      | Eureka Server              | 8761  | —              | fait     |
 | api-gateway            | Spring Cloud Gateway (WebFlux) | 8080 | —          | fait (sans JWT) |
-| auth-service           | Spring Boot + Security/JWT | 8081  | auth_db        | à faire  |
+| auth-service           | Spring Boot + Security/JWT | 8081  | auth_db        | fait     |
 | claim-service          | Spring Boot + OpenFeign    | 8082  | claim_db       | à faire  |
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
@@ -47,7 +47,54 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Tests : `src/test/resources/application.yml` remplace la config principale (pas de Config Server ni
   d'Eureka), charge `../config-repo/api-gateway.yml`, et simule les instances avec
   `spring.cloud.discovery.client.simple.instances.*` + WireMock.
-- JWT (vérification des jetons à la passerelle) : prévu avec auth-service, pas encore fait.
+- JWT (vérification des jetons à la passerelle) : étape suivante, pas encore fait. Reprendre la même
+  clé que auth-service (voir « JWT » ci-dessous) avec `NimbusReactiveJwtDecoder.withSecretKey(...)`
+  et ajouter l'import `.env` dans `api-gateway/src/main/resources/application.yml`.
+
+## auth-service (port 8081, base auth_db)
+- Packages : `user` (entité `User`, enum `Role`, dépôt), `service` (`AuthService`, `UserService`),
+  `security` (`SecurityConfig`, `JwtProperties`, `TokenService`), `web` (contrôleurs, `dto/Dtos`),
+  `error` (`ApiError`, `ApiException`, `GlobalExceptionHandler`, `JsonSecurityErrorHandler`),
+  `bootstrap` (`AdminAccountInitializer`).
+- Endpoints (tous sous `/api/auth`, publics = register et login) :
+  | Méthode + chemin                          | Accès   | Rôle |
+  |-------------------------------------------|---------|------|
+  | `POST /api/auth/register`                 | public  | inscription CLIENT (rôle imposé), 201 |
+  | `POST /api/auth/login`                    | public  | `{accessToken, tokenType, expiresIn, user}` |
+  | `GET /api/auth/me`                        | connecté | profil |
+  | `PUT /api/auth/me`                        | connecté | `{name?, currentPassword?, newPassword?}` |
+  | `GET /api/auth/admin/users`               | ADMIN   | liste |
+  | `POST /api/auth/admin/users`              | ADMIN   | crée AGENT ou ADMIN (CLIENT refusé, 400) |
+  | `PATCH /api/auth/admin/users/{id}/role`   | ADMIN   | `{role}` (pas sur soi-même → 409) |
+  | `PATCH /api/auth/admin/users/{id}/status` | ADMIN   | `{active}` (pas sur soi-même → 409) |
+- Erreurs : JSON unique `ApiError {timestamp, status, error, message, path, fieldErrors?}` pour
+  400/401/403/404/409/500, y compris les 401/403 de Spring Security (`JsonSecurityErrorHandler`).
+  Login : même message pour email inconnu et mauvais mot de passe (+ BCrypt factice contre le timing) ;
+  compte désactivé → 403, signalé seulement si le mot de passe est correct.
+- Schéma : Flyway (`src/main/resources/db/migration/V<n>__*.sql`, compatible PostgreSQL ET H2) ;
+  Hibernate en `ddl-auto: validate`. Ne jamais modifier une migration déjà appliquée : en créer une nouvelle.
+- Admin initial : créé au démarrage depuis `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` seulement
+  s'il n'existe AUCUN admin en base.
+- Tests : `src/test/resources/application.yml` (H2 mode PostgreSQL, pas de Config Server/Eureka/.env),
+  tests unitaires Mockito (`service/`) et intégration MockMvc (`web/AuthApiIntegrationTest`).
+
+## JWT (contrat partagé entre auth-service et la gateway)
+- HS256 ; clé = octets UTF-8 de `JWT_SECRET` (≥ 32 caractères, aucune valeur par défaut).
+- `security.jwt.secret` et `security.jwt.issuer` sont dans `config-repo/application.yml` (PARTAGÉ) ;
+  `security.jwt.expiration` (`JWT_EXPIRATION`, défaut 1h) dans `config-repo/auth-service.yml`.
+- Claims : `iss` = `reclamations-auth-service`, `sub` = id utilisateur, `email`, `role`
+  (CLIENT | AGENT | ADMIN → autorité `ROLE_<role>`), `iat`, `exp`.
+- Pas de révocation : un changement de rôle prend effet au prochain login ; un compte désactivé
+  est refusé par auth-service (/me) mais son jeton reste techniquement valide jusqu'à `exp`.
+
+## Variables d'environnement (.env à la racine, modèle .env.example)
+- Lecture : Docker Compose lit `.env` ; les services Spring l'importent avec
+  `spring.config.import: optional:file:../.env[.properties]` (et `./.env` depuis l'IDE).
+  Les variables d'environnement du système restent prioritaires.
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (base par défaut de l'image), `POSTGRES_PORT`,
+  `POSTGRES_HOST` (facultatif, défaut localhost), `JWT_SECRET`, `JWT_EXPIRATION`, `ADMIN_EMAIL`,
+  `ADMIN_PASSWORD`, `ADMIN_NAME`.
+- Ne jamais demander ces valeurs dans le chat ni les écrire dans `.env` : l'utilisateur remplit `.env`.
 
 ## Stack et versions
 - Spring Boot **3.5.16**, Spring Cloud **2025.0.3** (gérés dans le `pom.xml` parent).
@@ -61,8 +108,11 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   directement avec Maven (`mvnw spring-boot:run` ou l'IDE), Python (uvicorn) et Node (npm).
 - Livrable : « application exécutable en local, avec un guide de lancement (README) » → tenir
   `README.md` à jour à chaque nouveau service (commande de lancement, port, URL de vérification).
-- Ordre de démarrage : `docker compose up -d` → config-server → discovery-service → api-gateway →
-  autres services.
+- Ordre de démarrage : `docker compose up -d postgres` → config-server → discovery-service →
+  api-gateway → auth-service → autres services.
+- Une base PostgreSQL par service, créée par `docker/postgres/init/01-create-databases.sql` (une
+  ligne par service ; script exécuté seulement si le volume est vide, sinon lancer la ligne à la main).
+  Un seul utilisateur PostgreSQL (`POSTGRES_USER`) pour toutes les bases en développement.
 
 ## Conventions
 - Monorepo : un dossier par service à la racine, modules Maven déclarés dans le `pom.xml` parent.
@@ -77,6 +127,9 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   (ex. `wiremock.version` 3.13.2 dans api-gateway, tests uniquement).
 - Valeurs sensibles via variables d'environnement, jamais en dur dans le dépôt.
 - Chaque module a au moins un test `@SpringBootTest` (contexte qui démarre) ; `mvnw clean verify` doit passer.
+- Tests sans infrastructure : un `src/test/resources/application.yml` remplace la config principale
+  (Config Server, Eureka désactivés ; H2 mode PostgreSQL pour les services avec base).
+- Ne jamais committer : l'utilisateur fait ses commits lui-même.
 - Code et commentaires en français pour la doc, identifiants en anglais.
 
 ## Structure du dépôt
@@ -87,14 +140,16 @@ config-repo/         configurations centralisées servies par config-server
 config-server/       Spring Cloud Config Server (profil native)
 discovery-service/   serveur Eureka
 api-gateway/         Spring Cloud Gateway (réactif) — routes, CORS, journalisation
+auth-service/        comptes, login JWT, rôles, administration des utilisateurs
 docs/                cahier des charges et conception
+docker/postgres/init scripts SQL de création des bases (une par service)
 docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 .env.example         modèle des variables Docker Compose
 ```
 
 ## Ordre de développement prévu (cahier des charges §12)
 1. ✅ Socle : config-server, discovery-service, docker-compose (PostgreSQL).
-2. ✅ api-gateway (routes, CORS, logs ; JWT à ajouter) — puis auth-service (JWT, rôles client/agent/admin — BF1–BF5).
+2. ✅ api-gateway (routes, CORS, logs) ; ✅ auth-service (BF1–BF5, BF21) ; ⏳ vérification JWT à la gateway.
 3. claim-service (BF6–BF15, BF23), notification-service (BF10), stats-service (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service + jeu de données + notebook d'évaluation (BF16–BF20, objectif ≥ 85 % accuracy / F1 macro).
 5. Frontend React (interfaces client, agent, admin, tableau de bord).

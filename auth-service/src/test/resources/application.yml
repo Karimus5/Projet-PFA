@@ -1,0 +1,37 @@
+# Configuration utilisée UNIQUEMENT par les tests : remplace src/main/resources/application.yml
+# (trouvée en premier dans le classpath de test). Ni Config Server, ni Eureka, ni .env, ni Docker :
+# H2 en mémoire en mode PostgreSQL, schéma créé par les mêmes migrations Flyway qu'en production.
+
+spring:
+  application:
+    name: auth-service
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+  datasource:
+    url: jdbc:h2:mem:auth_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+eureka:
+  client:
+    enabled: false
+
+security:
+  jwt:
+    # Secret de TEST uniquement (jamais utilisé hors des tests).
+    secret: secret-de-test-uniquement-0123456789-abcdefghij
+    issuer: reclamations-auth-service
+    expiration: 15m
+
+bootstrap:
+  admin:
+    email: admin@test.local
+    password: Admin-Test-123
+    name: Admin Test
