@@ -1,0 +1,68 @@
+# Configuration centralisée de l'API Gateway (port 8080).
+# Les noms après lb:// sont les noms d'enregistrement Eureka (spring.application.name) des services.
+# Le chemin est transmis tel quel : /api/claims/42 arrive sur claim-service en /api/claims/42.
+# Si aucune instance n'est enregistrée dans Eureka, la passerelle répond 503 (Service Unavailable).
+
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth-service
+              uri: lb://auth-service
+              predicates:
+                - Path=/api/auth/**
+            - id: claim-service
+              uri: lb://claim-service
+              predicates:
+                - Path=/api/claims/**
+            - id: stats-service
+              uri: lb://stats-service
+              predicates:
+                - Path=/api/stats/**
+
+          # Évite les en-têtes CORS en double si un service en aval en ajoute aussi.
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
+
+          # CORS géré UNIQUEMENT à la passerelle, pour le frontend React
+          # (3000 = Create React App, 5173 = Vite).
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              "[/**]":
+                allowed-origins:
+                  - http://localhost:3000
+                  - http://localhost:5173
+                allowed-methods:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - OPTIONS
+                allowed-headers:
+                  - Authorization
+                  - Content-Type
+                  - Accept
+                  - X-Requested-With
+                exposed-headers:
+                  - Location
+                  - Content-Disposition
+                allow-credentials: true
+                max-age: 3600
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: api-gateway
+    description: Point d'entrée unique de la plateforme de gestion des réclamations

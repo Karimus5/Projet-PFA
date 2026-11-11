@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    # Routes, CORS et paramètres Eureka viennent du Config Server
+    # (config-repo/api-gateway.yml + config-repo/application.yml).
+    # Import NON optionnel : sans Config Server la passerelle n'aurait aucune route,
+    # on préfère qu'elle refuse de démarrer. Lancer config-server en premier.
+    import: configserver:${CONFIG_SERVER_URL:http://localhost:8888}
