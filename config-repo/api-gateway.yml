@@ -72,6 +72,15 @@ gateway:
     role-rules:
       - path: /api/auth/admin/**
         roles: [ADMIN]
+      # claim-service : administration des référentiels, et listes déroulantes (agents / admins).
+      # Le reste de /api/claims/** exige seulement un jeton valide : claim-service applique
+      # lui-même les règles fines (rôle + visibilité de chaque réclamation).
+      - path: /api/claims/admin/**
+        roles: [ADMIN]
+      - path: /api/claims/categories/**
+        roles: [AGENT, ADMIN]
+      - path: /api/claims/services/**
+        roles: [AGENT, ADMIN]
       # Règles prévues pour les prochains services (décommenter au moment de leur création) :
       # - path: /api/stats/**
       #   roles: [AGENT, ADMIN]

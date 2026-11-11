@@ -16,7 +16,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | discovery-service      | Eureka Server              | 8761  | —              | fait     |
 | api-gateway            | Spring Cloud Gateway (WebFlux) | 8080 | —          | fait (JWT vérifié) |
 | auth-service           | Spring Boot + Security/JWT | 8081  | auth_db        | fait     |
-| claim-service          | Spring Boot + OpenFeign    | 8082  | claim_db       | à faire  |
+| claim-service          | Spring Boot (OpenFeign plus tard) | 8082 | claim_db | fait (sans IA) |
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
 | ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | à faire  |
@@ -60,7 +60,8 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   - `public-routes` (sans jeton) : `POST /api/auth/register`, `POST /api/auth/login`,
     `GET /actuator/health/**` (règles par méthode : `GET /api/auth/login` exige un jeton) ;
   - `role-rules` (jeton + rôle, sinon 403), évaluées dans l'ordre : `/api/auth/admin/**` → ADMIN ;
-    `/api/stats/**` → AGENT, ADMIN prévu en commentaire (à activer avec stats-service) ;
+    `/api/claims/admin/**` → ADMIN ; `/api/claims/categories/**` et `/api/claims/services/**` →
+    AGENT, ADMIN ; `/api/stats/**` → AGENT, ADMIN prévu en commentaire (à activer avec stats-service) ;
   - tout le reste (dont `/actuator/info`) : jeton valide, sinon 401.
   Pour une nouvelle règle : ajouter une entrée dans le YAML (rien à coder).
 - `JsonSecurityErrorHandler` : 401/403 au format `ApiError` d'auth-service, mêmes messages
@@ -100,6 +101,46 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   s'il n'existe AUCUN admin en base.
 - Tests : `src/test/resources/application.yml` (H2 mode PostgreSQL, pas de Config Server/Eureka/.env),
   tests unitaires Mockito (`service/`) et intégration MockMvc (`web/AuthApiIntegrationTest`).
+
+## claim-service (port 8082, base claim_db) — étape 5b, SANS IA
+- Packages : `domain` (entités + dépôts : `Claim`, `ClaimStatus`, `ClaimWorkflow`, `Category`,
+  `ProcessingService` = « Service » du diagramme (nom évitant le conflit avec `@Service`),
+  `ServiceAgent`, `Comment`, `StatusHistory`, `Attachment`), `access` (`ClaimAccessPolicy` logique
+  pure, `ClaimAccess` chargement 404 + Specification de liste), `service` (`ClaimService`,
+  `ReferenceDataService`, `AttachmentService`, `DtoMapper`), `storage` (`AttachmentStorage`,
+  `AllowedFileType`, `FileNameSanitizer`, `AttachmentProperties`), `event` (`ClaimEventPublisher`,
+  `LoggingClaimEventPublisher`, `ClaimEventDispatcher` après commit), `security` (`CurrentUser`,
+  `CurrentUserArgumentResolver`, `UserRole`), `web` (`ClaimController`, `ReferenceDataController`,
+  `dto/Dtos`), `error` (`ApiError` identique à auth-service).
+- **Pas de Spring Security** : appelant = en-têtes `X-User-Id/Email/Role` de la gateway (absents ou
+  invalides → 401). Limite documentée : le port 8082 ne doit jamais être exposé.
+- Statuts (diagramme d'états, `ClaimStatus.canTransitionTo` + `ClaimWorkflow`) :
+  NEW→CLASSIFIED (ADMIN, via `PUT /{id}/classification`), NEW→REJECTED (ADMIN), CLASSIFIED→ASSIGNED
+  (AGENT/ADMIN, via `PUT /{id}/assignment` avec agentId), ASSIGNED→IN_PROGRESS et IN_PROGRESS→RESOLVED
+  (AGENT/ADMIN), RESOLVED→CLOSED et RESOLVED→IN_PROGRESS (CLIENT propriétaire SEULEMENT).
+  Transition absente → 409 ; existante mais rôle interdit → 403. Tout changement → `StatusHistory`
+  (création = null→NEW). `PATCH /status` refuse CLASSIFIED/ASSIGNED (400 : endpoints dédiés).
+- Décisions validées par l'utilisateur : tri des NEW par l'ADMIN seul ; réaffectation (ASSIGNED,
+  IN_PROGRESS) = statut CONSERVÉ, agent obligatoire, trace en commentaire interne ; correction de
+  classification = statut conservé, source MANUAL, trace interne.
+- Visibilité : CLIENT = ses réclamations ; AGENT = service ∈ ses services (table `service_agents`)
+  OU assignedAgentId = lui ; ADMIN = tout. Non visible → **404 partout** (jamais 403). Commentaires
+  internes filtrés EN BASE pour le client. Action interdite au rôle sur réclamation visible → 403.
+- Agents : l'admin saisit `agentId` (id auth-service) + `agentName` ; pas d'appel à auth-service (limite
+  documentée). L'agent affecté doit être rattaché au service cible (400 sinon).
+- Pièces jointes : PDF/PNG/JPG par signature binaire + extension cohérente, 5 Mo (400), 5 par
+  réclamation (409), réclamation ouverte (409 si CLOSED/REJECTED). Stockage `CLAIMS_STORAGE_DIR`
+  (défaut `~/reclamations-data/attachments`, hors dépôt) sous `<claimId>/<uuid>.<ext>` ; fichier
+  supprimé si la transaction échoue. Téléchargement : mêmes règles d'accès (404).
+- Événements : `ClaimEventPublisher` appelé après commit (CREATED, STATUS_CHANGED,
+  CLASSIFICATION_CHANGED, ASSIGNED, PUBLIC_COMMENT_ADDED) ; implémentation actuelle = log. Pour
+  RabbitMQ : nouvelle implémentation `@Primary`, ne pas toucher `ClaimService`.
+- Données initiales (Flyway V2) : services et catégories Facturation, Support technique, Livraison.
+  `Claim` a un `@Version` (conflit concurrent → 409).
+- Endpoints : voir README « API des réclamations ». Tests : `ClaimWorkflowTest`,
+  `ClaimAccessPolicyTest`, `FileValidationTest`, `ClaimApiIntegrationTest` (MockMvc, en-têtes simulés).
+- À venir (étape IA) : classification automatique à la création (source AI + score, repli MANUAL),
+  classe Prediction (BF18, BF20).
 
 ## Frontend (`frontend/`, port 5173)
 - Vite 8, React 19, react-router 7.18 (pas 8 : exige Node ≥ 22.22, la machine a 22.20), Tailwind CSS 4
@@ -143,7 +184,7 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   Les variables d'environnement du système restent prioritaires.
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (base par défaut de l'image), `POSTGRES_PORT`,
   `POSTGRES_HOST` (facultatif, défaut localhost), `JWT_SECRET`, `JWT_EXPIRATION`, `ADMIN_EMAIL`,
-  `ADMIN_PASSWORD`, `ADMIN_NAME`.
+  `ADMIN_PASSWORD`, `ADMIN_NAME`, `CLAIMS_STORAGE_DIR` (facultatif, pièces jointes, hors dépôt).
 - Ne jamais demander ces valeurs dans le chat ni les écrire dans `.env` : l'utilisateur remplit `.env`.
 
 ## Stack et versions
@@ -159,9 +200,11 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Livrable : « application exécutable en local, avec un guide de lancement (README) » → tenir
   `README.md` à jour à chaque nouveau service (commande de lancement, port, URL de vérification).
 - Ordre de démarrage : `docker compose up -d postgres` → config-server → discovery-service →
-  api-gateway → auth-service → autres services → frontend (`npm run dev`).
+  api-gateway → auth-service → claim-service → autres services → frontend (`npm run dev`).
 - Une base PostgreSQL par service, créée par `docker/postgres/init/01-create-databases.sql` (une
-  ligne par service ; script exécuté seulement si le volume est vide, sinon lancer la ligne à la main).
+  ligne par service ; script exécuté seulement si le volume est vide). Volume existant : rejouer le
+  script, idempotent : `docker exec reclamations-postgres sh -c 'psql -v ON_ERROR_STOP=1 -U $POSTGRES_USER
+  -d postgres -f /docker-entrypoint-initdb.d/01-create-databases.sql'` (auth_db et claim_db existent).
   Un seul utilisateur PostgreSQL (`POSTGRES_USER`) pour toutes les bases en développement.
 
 ## Conventions
@@ -191,8 +234,10 @@ config-server/       Spring Cloud Config Server (profil native)
 discovery-service/   serveur Eureka
 api-gateway/         Spring Cloud Gateway (réactif) — routes, CORS, journalisation
 auth-service/        comptes, login JWT, rôles, administration des utilisateurs
+claim-service/       réclamations, statuts, commentaires, affectations, pièces jointes
 frontend/            React (Vite, Tailwind) — npm, hors Maven
 docs/                cahier des charges et conception
+scripts/             scripts de test manuels (test-claim-service.ps1, PowerShell 5.1, via la gateway)
 docker/postgres/init scripts SQL de création des bases (une par service)
 docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 .env.example         modèle des variables Docker Compose
@@ -201,7 +246,8 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 ## Ordre de développement prévu (cahier des charges §12)
 1. ✅ Socle : config-server, discovery-service, docker-compose (PostgreSQL).
 2. ✅ api-gateway (routes, CORS, logs) ; ✅ auth-service (BF1–BF5, BF21) ; ✅ vérification JWT à la gateway.
-3. claim-service (BF6–BF15, BF23), notification-service (BF10), stats-service (BF24–BF26) + RabbitMQ.
+3. ✅ claim-service sans IA (BF6–BF15, BF22, BF23) ; notification-service (BF10), stats-service
+   (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service + jeu de données + notebook d'évaluation (BF16–BF20, objectif ≥ 85 % accuracy / F1 macro).
 5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; à venir : pages
    réclamations client/agent/admin et tableau de bord.

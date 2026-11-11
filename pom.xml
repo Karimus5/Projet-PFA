@@ -23,6 +23,7 @@
         <module>discovery-service</module>
         <module>api-gateway</module>
         <module>auth-service</module>
+        <module>claim-service</module>
     </modules>
 
     <properties>

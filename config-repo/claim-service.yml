@@ -1,0 +1,41 @@
+# Configuration centralisée de claim-service (port 8082).
+# Les ${...} sont résolus côté claim-service, depuis les variables d'environnement ou le fichier .env.
+#
+# SÉCURITÉ : claim-service ne revalide PAS le JWT. Il identifie l'appelant avec les en-têtes
+# X-User-Id / X-User-Email / X-User-Role posés par l'api-gateway (qui supprime ceux envoyés par
+# le client). Le port 8082 ne doit donc JAMAIS être exposé directement : seule la gateway l'est.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/claim_db
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Le schéma est géré UNIQUEMENT par Flyway (src/main/resources/db/migration).
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Charge catégories / services des listes paginées par lots (évite le N+1).
+        default_batch_fetch_size: 50
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      # Le contrôle métier (5 Mo par fichier, 5 fichiers par réclamation) est fait par
+      # AttachmentService ; ces limites techniques ne servent que de garde-fou.
+      max-file-size: 5MB
+      max-request-size: 26MB
+
+server:
+  tomcat:
+    # Laisse Tomcat lire la fin d'un envoi trop gros pour pouvoir renvoyer l'erreur JSON.
+    max-swallow-size: 30MB
+
+claims:
+  attachments:
+    # Dossier de stockage des pièces jointes, HORS du dépôt Git (créé au besoin).
+    storage-dir: ${CLAIMS_STORAGE_DIR:${user.home}/reclamations-data/attachments}
+    max-file-size: 5MB
+    max-files-per-claim: 5

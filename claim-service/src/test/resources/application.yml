@@ -1,0 +1,38 @@
+# Configuration utilisée UNIQUEMENT par les tests : remplace src/main/resources/application.yml
+# (trouvée en premier dans le classpath de test). Ni Config Server, ni Eureka, ni .env, ni Docker :
+# H2 en mémoire en mode PostgreSQL, schéma créé par les mêmes migrations Flyway qu'en production.
+
+spring:
+  application:
+    name: claim-service
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+  datasource:
+    url: jdbc:h2:mem:claim_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 26MB
+
+eureka:
+  client:
+    enabled: false
+
+claims:
+  attachments:
+    # Dossier temporaire propre aux tests (jamais dans le dépôt).
+    storage-dir: ${java.io.tmpdir}/claim-service-tests/attachments
+    max-file-size: 5MB
+    max-files-per-claim: 5

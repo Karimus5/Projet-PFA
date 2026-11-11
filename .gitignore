@@ -25,3 +25,9 @@ node_modules/
 # Frontend (Vite)
 dist/
 *.local
+
+# Pièces jointes de claim-service : stockées HORS du dépôt par défaut (CLAIMS_STORAGE_DIR,
+# ~/reclamations-data/attachments). Filet de sécurité si un dossier local est configuré ici.
+reclamations-data/
+attachments/
+uploads/

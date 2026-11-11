@@ -4,8 +4,9 @@ PFA 2026-2027 — architecture microservices (Spring Boot / Spring Cloud) et cla
 Cahier des charges : [`docs/cahier-des-charges.pdf`](docs/cahier-des-charges.pdf).
 
 **État actuel :** `config-server` (8888), `discovery-service` / Eureka (8761), `api-gateway` (8080),
-`auth-service` (8081, PostgreSQL `auth_db`) et le **frontend React** (5173 : connexion, inscription,
-profil, gestion des utilisateurs).
+`auth-service` (8081, PostgreSQL `auth_db`), `claim-service` (8082, PostgreSQL `claim_db` :
+réclamations, statuts, commentaires, affectations, pièces jointes — classement manuel, l'IA viendra
+plus tard) et le **frontend React** (5173 : connexion, inscription, profil, gestion des utilisateurs).
 
 **Mode d'exécution :** l'application s'exécute en local. Docker Compose ne lance que les bases de
 données et le broker de messages ; les services tournent directement avec Maven (et plus tard
@@ -40,6 +41,7 @@ notepad .env
 | `JWT_SECRET`      | **obligatoire**, au moins 32 caractères, partagé par auth-service et la gateway (signature / vérification) |
 | `JWT_EXPIRATION`  | durée de validité des jetons (`1h` par défaut)                        |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | compte ADMIN créé au 1er démarrage d'auth-service s'il n'existe aucun admin |
+| `CLAIMS_STORAGE_DIR` | facultatif : dossier des pièces jointes de claim-service, **hors du dépôt** (défaut `<dossier utilisateur>/reclamations-data/attachments` ; écrire le chemin avec des `/`) |
 
 Générer un `JWT_SECRET` aléatoire (à coller dans `.env`) :
 ```powershell
@@ -51,7 +53,8 @@ Format du fichier : `CLE=valeur`, sans guillemets ni espaces autour de `=`, sans
 ```powershell
 .\mvnw.cmd clean verify
 ```
-Les tests n'ont besoin ni de Docker ni des autres services (H2 en mémoire pour auth-service).
+Les tests n'ont besoin ni de Docker ni des autres services (H2 en mémoire pour auth-service et
+claim-service ; les en-têtes de la gateway sont simulés dans les tests de claim-service).
 Frontend : `cd frontend; npm test; npm run build`.
 
 ## Lancer la plateforme (dans cet ordre)
@@ -88,10 +91,20 @@ Vérifier : http://localhost:8080/actuator/health → `{"status":"UP"}`
 Au premier démarrage, Flyway crée la table `users` et le compte ADMIN initial est créé
 (log `Compte ADMIN initial créé`). `AUTH-SERVICE` apparaît dans Eureka en ~30 s.
 
-Depuis IntelliJ : lancer `ConfigServerApplication`, `DiscoveryServiceApplication`,
-`ApiGatewayApplication`, puis `AuthServiceApplication` (répertoire de travail = racine du projet).
+**Terminal 5 — claim-service** (PostgreSQL avec la base `claim_db`, voir
+[PostgreSQL](#postgresql-docker-compose) si votre volume existait avant cette étape)
+```powershell
+.\mvnw.cmd -pl claim-service spring-boot:run
+```
+Vérifier : http://localhost:8082/actuator/health → `{"status":"UP"}` (vérification locale
+uniquement : en dehors de ce test, on passe toujours par la gateway). Flyway crée le schéma et les
+catégories / services d'exemple ; `CLAIM-SERVICE` apparaît dans Eureka en ~30 s.
 
-**Terminal 5 — Frontend React** (une fois la gateway et auth-service démarrés)
+Depuis IntelliJ : lancer `ConfigServerApplication`, `DiscoveryServiceApplication`,
+`ApiGatewayApplication`, `AuthServiceApplication` puis `ClaimServiceApplication` (répertoire de
+travail = racine du projet).
+
+**Terminal 6 — Frontend React** (une fois la gateway et auth-service démarrés)
 ```powershell
 cd frontend
 npm install        # la première fois seulement
@@ -153,7 +166,7 @@ Le frontend n'appelle que la passerelle. Routes définies dans `config-repo/api-
 | Chemin           | Service (nom Eureka) | État                |
 |------------------|----------------------|---------------------|
 | `/api/auth/**`   | auth-service         | disponible          |
-| `/api/claims/**` | claim-service        | à venir → 503       |
+| `/api/claims/**` | claim-service        | disponible          |
 | `/api/stats/**`  | stats-service        | à venir → 503       |
 
 CORS autorisé pour le frontend React : http://localhost:3000 et http://localhost:5173.
@@ -167,9 +180,10 @@ de router la requête. Règles dans `config-repo/api-gateway.yml` (`gateway.secu
 | Accès                    | Routes |
 |--------------------------|--------|
 | Public (sans jeton)      | `POST /api/auth/register`, `POST /api/auth/login`, `GET /actuator/health`, toutes les pré-requêtes CORS `OPTIONS` |
-| Rôle ADMIN               | `/api/auth/admin/**` (sinon **403**) |
+| Rôle ADMIN               | `/api/auth/admin/**`, `/api/claims/admin/**` (sinon **403**) |
+| Rôle AGENT ou ADMIN      | `/api/claims/categories/**`, `/api/claims/services/**` (sinon **403**) |
 | Prévu (commenté)         | `/api/stats/**` → AGENT ou ADMIN, à activer avec stats-service |
-| Jeton valide             | tout le reste, ex. `GET/PUT /api/auth/me`, `/api/claims/**` (sinon **401**) |
+| Jeton valide             | tout le reste, ex. `GET/PUT /api/auth/me`, le reste de `/api/claims/**` (sinon **401**) |
 
 Erreurs au même format JSON que auth-service :
 `{"timestamp":…,"status":401,"error":"Unauthorized","message":"Authentification requise","path":"/api/auth/me"}`
@@ -256,6 +270,175 @@ curl.exe -s "$G/api/auth/admin/users" -H "Authorization: Bearer $($admin.accessT
 (Pour la dernière commande, remplacer `$env:ADMIN_EMAIL` / `$env:ADMIN_PASSWORD` par les valeurs
 de votre `.env`, ou les définir d'abord dans la session PowerShell.)
 
+## API des réclamations (claim-service, via la gateway)
+Tous les chemins sont sous `/api/claims`. claim-service identifie l'appelant par les en-têtes
+`X-User-Id`, `X-User-Email`, `X-User-Role` posés par la gateway (absents → 401).
+
+| Méthode | Chemin | Accès | Description |
+|---------|--------|-------|-------------|
+| POST  | `/api/claims` | CLIENT | soumettre `{title, description}` → 201, statut `NEW` (BF6) |
+| GET   | `/api/claims?status=&page=0&size=20` | tous | réclamations **visibles**, plus récentes d'abord, `size` ≤ 100 (BF7, BF11) |
+| GET   | `/api/claims/{id}` | tous | détail + historique + commentaires + pièces jointes (BF8) |
+| POST  | `/api/claims/{id}/complements` | CLIENT propriétaire | `{text}` ajouté à la description, réclamation ouverte (BF9) |
+| POST  | `/api/claims/{id}/comments` | tous | `{content, internal?}` ; `internal: true` réservé aux agents/admins (BF13) |
+| PATCH | `/api/claims/{id}/status` | selon transition | `{status, note?}` (BF12) |
+| PUT   | `/api/claims/{id}/classification` | ADMIN (NEW) ; AGENT/ADMIN (correction) | `{categoryId, serviceId?}` (BF14) |
+| PUT   | `/api/claims/{id}/assignment` | AGENT/ADMIN | `{serviceId, agentId?}` (BF15, BF23) |
+| POST  | `/api/claims/{id}/attachments` | tous (si visible) | multipart, partie `files` (un ou plusieurs fichiers) |
+| GET   | `/api/claims/{id}/attachments/{attachmentId}` | tous (si visible) | téléchargement |
+| GET   | `/api/claims/categories`, `/api/claims/services`, `/api/claims/services/{id}/agents` | AGENT, ADMIN | listes déroulantes |
+| POST/PUT/DELETE | `/api/claims/admin/services[/{id}]` | ADMIN | `{name, description?}` (BF22) |
+| POST/PUT/DELETE | `/api/claims/admin/categories[/{id}]` | ADMIN | `{name, description?, serviceId}` (BF22) |
+| POST  | `/api/claims/admin/services/{id}/agents` | ADMIN | rattacher un agent `{agentId, agentName}` |
+| DELETE | `/api/claims/admin/services/{id}/agents/{agentId}` | ADMIN | détacher un agent |
+
+Données initiales : services et catégories **Facturation**, **Support technique**, **Livraison**
+(chaque catégorie est traitée par le service du même nom).
+
+### Cycle de vie (diagramme d'états du cahier des charges)
+| Transition | Déclencheur | Qui |
+|------------|-------------|-----|
+| `NEW → CLASSIFIED` | `PUT …/classification` (classement manuel, source `MANUAL`) | ADMIN |
+| `NEW → REJECTED` | `PATCH …/status` (demande invalide) | ADMIN |
+| `CLASSIFIED → ASSIGNED` | `PUT …/assignment` avec un `agentId` | AGENT, ADMIN |
+| `ASSIGNED → IN_PROGRESS` | `PATCH …/status` (prise en charge) | AGENT, ADMIN |
+| `IN_PROGRESS → RESOLVED` | `PATCH …/status` | AGENT, ADMIN |
+| `RESOLVED → CLOSED` | `PATCH …/status` (validée) | CLIENT propriétaire **uniquement** |
+| `RESOLVED → IN_PROGRESS` | `PATCH …/status` (rouverte) | CLIENT propriétaire **uniquement** |
+
+- Toute autre transition → **409**. Transition existante mais rôle non autorisé → **403**.
+- Chaque changement de statut est enregistré dans l'historique (ancien, nouveau, auteur, rôle,
+  note, date), y compris la création (`null → NEW`).
+- **Réaffectation** (`ASSIGNED` ou `IN_PROGRESS`) : le statut est **conservé**, un agent est
+  obligatoire, et l'affectation est tracée dans un commentaire interne automatique.
+- **Correction de classification** (`CLASSIFIED`, `ASSIGNED`, `IN_PROGRESS`) : le statut est
+  conservé, la source passe à `MANUAL`, avec une trace en commentaire interne.
+- L'agent désigné doit être rattaché au service choisi (sinon 400).
+- Une réclamation `CLOSED` ou `REJECTED` n'accepte plus ni complément, ni commentaire, ni pièce
+  jointe (409).
+
+### Règles de visibilité
+| Rôle | Voit |
+|------|------|
+| CLIENT | uniquement ses propres réclamations ; **jamais** les commentaires internes |
+| AGENT | les réclamations dont le service fait partie de ses services (rattachement fait par l'admin) **ou** qui lui sont affectées ; donc pas les `NEW` non classées |
+| ADMIN | toutes |
+
+Une réclamation hors de portée renvoie **404 partout** (détail, actions, pièces jointes), exactement
+comme une réclamation inexistante : son existence n'est jamais révélée. Une action interdite au
+rôle sur une réclamation visible renvoie 403.
+
+### Pièces jointes
+PDF, PNG, JPG uniquement. Le type est vérifié par la **signature binaire** du fichier, et
+l'extension doit correspondre. 5 Mo maximum par fichier (400), 5 fichiers maximum par réclamation
+(409). Les fichiers sont stockés dans `CLAIMS_STORAGE_DIR` (hors du dépôt) sous un nom généré
+(`<id réclamation>/<uuid>.<ext>`). Le nom d'origine, assaini, ne sert qu'à l'affichage et au
+téléchargement (`Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`).
+
+### Événements (préparation de notification-service et stats-service)
+`ClaimEventPublisher` est publié **après validation de la transaction** : `CREATED`,
+`STATUS_CHANGED`, `CLASSIFICATION_CHANGED`, `ASSIGNED`, `PUBLIC_COMMENT_ADDED`. Pour l'instant,
+`LoggingClaimEventPublisher` se contente de journaliser (`Événement … : réclamation …`). Une
+implémentation RabbitMQ annotée `@Primary` la remplacera sans modifier `ClaimService`.
+
+### Limites connues
+- **Confiance dans la gateway** : claim-service ne revalide pas le JWT ; il croit les en-têtes
+  `X-User-*`. Le port **8082 ne doit jamais être exposé** : seule la gateway (8080) doit être
+  joignable depuis l'extérieur (réseau, pare-feu). Sinon, n'importe qui pourrait se faire passer
+  pour un autre utilisateur en posant ces en-têtes lui-même.
+- **Agents saisis par l'admin** : claim-service n'appelle pas auth-service. L'admin saisit l'id du
+  compte agent (visible dans `/admin/utilisateurs` ou `GET /api/auth/admin/users`) et son nom.
+  Rien ne vérifie que ce compte existe, est actif ou a le rôle AGENT, et un changement de nom
+  dans auth-service n'est pas répercuté. Détacher un agent d'un service ne lui retire pas les
+  réclamations qui lui sont déjà affectées.
+- Sans IA, les nouvelles réclamations attendent le tri manuel de l'admin (`NEW → CLASSIFIED`).
+
+### Script de test complet (`scripts/test-claim-service.ps1`)
+Teste le claim-service via la gateway en trois blocs (réclamations et statuts, commentaires et
+historique, référentiels et pièces jointes) et affiche le résultat de chaque étape, refus attendus
+compris (`-> HTTP 404 : ...`). Identifiants admin lus dans `.env`, jamais affichés, comme les jetons.
+Gère les particularités de Windows PowerShell 5.1 (corps UTF-8, multipart sans `-Form`, erreurs
+« chunked »). Chaque exécution crée deux clients et un agent `@test.ma` qui restent en base
+(à désactiver ensuite avec `PATCH /api/auth/admin/users/{id}/status`).
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\test-claim-service.ps1
+```
+
+### Tester avec Invoke-RestMethod (PowerShell, depuis la racine du projet)
+Scénario complet des critères de réussite, avec de vrais jetons. Les identifiants admin sont lus
+dans `.env` sans être affichés. Les comptes de test reçoivent des emails uniques.
+```powershell
+$G = "http://localhost:8080"; $json = "application/json; charset=utf-8"
+# Affiche « code corps » d'une erreur. Sous PowerShell 5.1, le corps JSON (accentué) peut s'afficher
+# vide : le code HTTP fait foi ; pour voir le message, refaire l'appel avec curl.exe -s.
+function Show-Error { param($e) "{0} {1}" -f [int]$e.Exception.Response.StatusCode, $e.ErrorDetails.Message }
+function Api($method, $path, $token, $body) {
+  $p = @{ Method = $method; Uri = "$G$path"; Headers = @{ Authorization = "Bearer $token" } }
+  if ($body) { $p.ContentType = $json; $p.Body = ($body | ConvertTo-Json) }
+  Invoke-RestMethod @p
+}
+function Login($email, $password) {
+  (Invoke-RestMethod -Method Post "$G/api/auth/login" -ContentType $json `
+    -Body (@{ email = $email; password = $password } | ConvertTo-Json)).accessToken
+}
+# Identifiants admin lus dans .env (rien n'est affiché)
+$cfg = @{}; Get-Content .env | Where-Object { $_ -match '^\s*([A-Z_]+)=(.*)$' } | ForEach-Object { $cfg[$Matches[1]] = $Matches[2].Trim() }
+$A = Login $cfg.ADMIN_EMAIL $cfg.ADMIN_PASSWORD
+
+# Comptes de test : deux clients et un agent
+$n = Get-Random; $pw = "motdepasse123"
+foreach ($c in "clientA", "clientB") {
+  Invoke-RestMethod -Method Post "$G/api/auth/register" -ContentType $json `
+    -Body (@{ name = $c; email = "$c-$n@test.local"; password = $pw } | ConvertTo-Json) | Out-Null
+}
+$agent = Api Post "/api/auth/admin/users" $A @{ name = "Agent Facturation"; email = "agent-$n@test.local"; password = $pw; role = "AGENT" }
+$CA = Login "clientA-$n@test.local" $pw; $CB = Login "clientB-$n@test.local" $pw; $AG = Login "agent-$n@test.local" $pw
+
+# L'admin rattache l'agent au service Facturation
+$svc = (Api Get "/api/claims/services" $A) | Where-Object name -eq "Facturation"
+$cat = (Api Get "/api/claims/categories" $A) | Where-Object name -eq "Facturation"
+Api Post "/api/claims/admin/services/$($svc.id)/agents" $A @{ agentId = $agent.id; agentName = $agent.name }
+
+# 1. Le client A crée une réclamation et la voit
+$claim = Api Post "/api/claims" $CA @{ title = "Facture en double"; description = "Preleve deux fois en octobre" }
+$id = $claim.id; $claim.status                                 # NEW
+(Api Get "/api/claims" $CA).content | Select-Object id, title, status
+# 2. Le client B ne la voit pas → 404 (même avec un faux X-User-Id, supprimé par la gateway)
+try { Api Get "/api/claims/$id" $CB } catch { Show-Error $_ }
+try { Invoke-RestMethod "$G/api/claims/$id" -Headers @{ Authorization = "Bearer $CB"; "X-User-Id" = "1"; "X-User-Role" = "ADMIN" } } catch { Show-Error $_ }
+# 3. Transition interdite → 409
+try { Api Patch "/api/claims/$id/status" $CA @{ status = "CLOSED" } } catch { Show-Error $_ }
+# 4. L'admin classe puis affecte au service et à l'agent
+(Api Put "/api/claims/$id/classification" $A @{ categoryId = $cat.id }).status          # CLASSIFIED
+(Api Put "/api/claims/$id/assignment" $A @{ serviceId = $svc.id; agentId = $agent.id }).status   # ASSIGNED
+# 5. L'agent la voit, commente (interne + public), la passe IN_PROGRESS puis RESOLVED
+(Api Get "/api/claims" $AG).content | Select-Object id, status
+Api Post "/api/claims/$id/comments" $AG @{ content = "Note interne : doublon confirme"; internal = $true }
+Api Post "/api/claims/$id/comments" $AG @{ content = "Remboursement lance" }
+(Api Patch "/api/claims/$id/status" $AG @{ status = "IN_PROGRESS" }).status
+(Api Patch "/api/claims/$id/status" $AG @{ status = "RESOLVED"; note = "Avoir emis" }).status
+try { Api Patch "/api/claims/$id/status" $AG @{ status = "CLOSED" } } catch { Show-Error $_ }   # 403 : seul le client clôture
+# 6. Le client ne voit pas le commentaire interne, puis clôture
+(Api Get "/api/claims/$id" $CA).comments | Select-Object content, internal              # uniquement le public
+$closed = Api Patch "/api/claims/$id/status" $CA @{ status = "CLOSED" }
+$closed.history | Select-Object oldStatus, newStatus, authorRole, note, changedAt        # NEW → … → CLOSED
+# 7. Contrôles de rôle à la gateway : 403
+try { Api Get "/api/claims/categories" $CA } catch { Show-Error $_ }
+try { Api Post "/api/claims/admin/services" $AG @{ name = "X" } } catch { Show-Error $_ }
+```
+Pièces jointes (avant la clôture, ou sur une nouvelle réclamation ; PowerShell 5.1 n'a pas
+`-Form`, on utilise donc `curl.exe`) :
+```powershell
+$id2 = (Api Post "/api/claims" $CA @{ title = "Colis abime"; description = "Carton ecrase" }).id
+Set-Content -Path "$env:TEMP\test.pdf" -Value "%PDF-1.4`n%%EOF" -NoNewline
+curl.exe -s -H "Authorization: Bearer $CA" -F "files=@$env:TEMP\test.pdf;filename=facture.pdf" "$G/api/claims/$id2/attachments"
+$att = (Api Get "/api/claims/$id2" $CA).attachments[0].id
+curl.exe -s -o "$env:TEMP\copie.pdf" -w "%{http_code}`n" -H "Authorization: Bearer $CA" "$G/api/claims/$id2/attachments/$att"   # 200
+curl.exe -s -o NUL -w "%{http_code}`n" -H "Authorization: Bearer $CB" "$G/api/claims/$id2/attachments/$att"                   # 404
+Set-Content -Path "$env:TEMP\faux.pdf" -Value "pas un pdf"
+curl.exe -s -H "Authorization: Bearer $CA" -F "files=@$env:TEMP\faux.pdf" "$G/api/claims/$id2/attachments"                     # 400
+```
+
 ## PostgreSQL (Docker Compose)
 Docker Compose sert uniquement aux bases de données (et plus tard à RabbitMQ).
 ```powershell
@@ -264,11 +447,18 @@ docker compose ps               # état : "healthy"
 docker compose down             # arrêter (données conservées)
 docker compose down -v          # arrêter ET supprimer les données (le script d'init sera rejoué)
 ```
-Une base par service, créée au premier démarrage par `docker/postgres/init/01-create-databases.sql`.
-Si le volume existe déjà, créer une nouvelle base à la main, par exemple :
+Une base par service, créée au premier démarrage par `docker/postgres/init/01-create-databases.sql`
+(actuellement `auth_db` et `claim_db`).
+
+**Volume déjà existant** (le script d'init n'est joué qu'avec un volume vide) : rejouer le script
+dans le conteneur. Il est **idempotent** : il ne crée que les bases manquantes et ne touche ni à
+`auth_db` ni à ses données.
 ```powershell
-docker exec reclamations-postgres psql -U reclamations -d postgres -c "CREATE DATABASE claim_db"
+docker exec reclamations-postgres sh -c 'psql -v ON_ERROR_STOP=1 -U $POSTGRES_USER -d postgres -f /docker-entrypoint-initdb.d/01-create-databases.sql'
 ```
+(`$POSTGRES_USER` est lu **dans le conteneur**, grâce aux guillemets simples. Rien à remplacer.)
+Vérifier : `docker exec reclamations-postgres sh -c 'psql -U $POSTGRES_USER -d postgres -l'`
+
 Si un PostgreSQL est déjà installé sur la machine, changer `POSTGRES_PORT` dans `.env` (ex. 5433).
 
 ## Structure
@@ -278,6 +468,7 @@ config-server/        Spring Cloud Config Server — port 8888
 discovery-service/    Eureka Server — port 8761
 api-gateway/          Spring Cloud Gateway — port 8080
 auth-service/         comptes, JWT, rôles — port 8081 (base auth_db)
+claim-service/        réclamations, statuts, commentaires, affectations, pièces jointes — port 8082 (base claim_db)
 frontend/             React + Vite + Tailwind — port 5173
 docker/postgres/init/ création des bases PostgreSQL (une par service)
 docs/                 cahier des charges

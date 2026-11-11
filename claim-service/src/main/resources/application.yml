@@ -1,0 +1,17 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    # Nom d'enregistrement Eureka : doit correspondre à lb://claim-service dans la gateway.
+    name: claim-service
+  config:
+    import:
+      # Base de données, pièces jointes : config-repo/claim-service.yml + config-repo/application.yml.
+      # Non optionnel : sans sa configuration, le service ne peut pas fonctionner.
+      - configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      # Secrets locaux (POSTGRES_*, CLAIMS_STORAGE_DIR...) lus depuis le .env à la racine du monorepo :
+      # ../.env quand on lance depuis le module (mvnw), ./.env depuis l'IDE (racine).
+      # Les variables d'environnement du système restent prioritaires sur ce fichier.
+      - optional:file:../.env[.properties]
+      - optional:file:./.env[.properties]
