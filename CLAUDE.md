@@ -1,7 +1,7 @@
 # CLAUDE.md — Plateforme intelligente de gestion des réclamations clients
 
 PFA 2026-2027 (EMSI Casablanca, sujet 20). Référence fonctionnelle : `docs/cahier-des-charges.pdf`
-(BF1–BF26, besoins non fonctionnels, architecture, UML). **Le relire avant toute nouvelle étape.**
+(version 2 ; BF1–BF26, besoins non fonctionnels, architecture, UML). **Le relire avant toute nouvelle étape.**
 Ne pas faire de choix d'architecture hors cahier des charges sans demander à l'utilisateur.
 
 ## Résumé
@@ -30,13 +30,14 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Java : cible **17** (`maven.compiler.release=17`) ; JDK 25 utilisé pour compiler/lancer (compatible).
 - Maven via le wrapper `mvnw.cmd` (Maven 3.9.16). PostgreSQL 16, RabbitMQ.
 
-## Exécution locale (choix de l'utilisateur, travail seul sur une machine)
-- **Les services ne sont PAS conteneurisés** : lancement avec `mvnw spring-boot:run` ou depuis l'IDE.
+## Exécution locale (exigé par le cahier des charges v2 : §6 Portabilité, §9 Outils, §11 Livrables)
 - **Docker Compose sert uniquement aux bases de données et au broker de messages** (PostgreSQL,
-  plus tard RabbitMQ). Variables dans `.env` (modèle : `.env.example`, `.env` non versionné).
-- Écart connu avec le cahier des charges (§6 Portabilité, §11 Livrables : « déployable avec Docker
-  Compose ») — à reconsidérer avant la soutenance si nécessaire, sur décision de l'utilisateur.
-- Ordre de démarrage : config-server → discovery-service → autres services.
+  plus tard RabbitMQ), jamais aux services. Variables dans `.env` (modèle : `.env.example`, non versionné).
+- **Les services ne sont PAS conteneurisés** (aucun Dockerfile de service) : ils s'exécutent
+  directement avec Maven (`mvnw spring-boot:run` ou l'IDE), Python (uvicorn) et Node (npm).
+- Livrable : « application exécutable en local, avec un guide de lancement (README) » → tenir
+  `README.md` à jour à chaque nouveau service (commande de lancement, port, URL de vérification).
+- Ordre de démarrage : `docker compose up -d` → config-server → discovery-service → autres services.
 
 ## Conventions
 - Monorepo : un dossier par service à la racine, modules Maven déclarés dans le `pom.xml` parent.

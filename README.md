@@ -5,6 +5,10 @@ Cahier des charges : [`docs/cahier-des-charges.pdf`](docs/cahier-des-charges.pdf
 
 **Étape actuelle : socle d'infrastructure** — `config-server` (8888) et `discovery-service` / Eureka (8761).
 
+**Mode d'exécution :** l'application s'exécute en local. Docker Compose ne lance que les bases de
+données et le broker de messages ; les services tournent directement avec Maven (et plus tard
+Python et Node), sans conteneur.
+
 ## Prérequis (Windows)
 - JDK 17 ou plus récent (testé avec JDK 25), avec `JAVA_HOME` pointant dessus.
 - Docker Desktop (uniquement pour PostgreSQL).
