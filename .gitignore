@@ -1,0 +1,23 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environnement local
+.env
+*.log
+
+# Python / Node (services à venir)
+__pycache__/
+venv/
+.venv/
+node_modules/

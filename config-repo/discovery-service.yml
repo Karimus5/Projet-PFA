@@ -1,0 +1,8 @@
+# Configuration centralisée du serveur Eureka (lue au démarrage via le Config Server).
+
+eureka:
+  server:
+    # En développement local, on désactive l'auto-préservation pour que les
+    # instances arrêtées disparaissent rapidement du tableau de bord.
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 10000

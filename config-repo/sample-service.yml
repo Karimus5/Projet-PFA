@@ -1,0 +1,7 @@
+# Fichier d'exemple : vérifier avec http://localhost:8888/sample-service/default
+# À supprimer quand les vrais services auront leur propre fichier.
+
+app:
+  message: "Bonjour depuis le Config Server"
+  feature:
+    exemple-active: true

@@ -1,0 +1,28 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    # "native" : la configuration est lue depuis un dossier local (config-repo/) et non depuis Git.
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          # Dossier config-repo à la racine du monorepo :
+          #  - ../config-repo/ quand on lance depuis le module (mvn spring-boot:run, tests Maven)
+          #  - ./config-repo/  quand on lance depuis l'IDE (répertoire de travail = racine)
+          # Surchargeable avec la variable d'environnement CONFIG_REPO_LOCATION.
+          search-locations: ${CONFIG_REPO_LOCATION:file:../config-repo/,file:./config-repo/}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
