@@ -125,11 +125,46 @@ l'API Gateway.
 **Variable d'environnement** : `VITE_API_URL` (défaut `http://localhost:8080`). Pour la changer,
 copier `frontend/.env.example` en `frontend/.env`.
 
-**Pages** : `/connexion`, `/inscription` (validation côté client : email valide, mot de passe de
-8 caractères minimum), `/profil` (modifier son nom, changer son mot de passe en saisissant l'ancien),
-`/admin/utilisateurs` (ADMIN : liste, création d'un agent ou admin, changement de rôle,
-activation/désactivation), `/403`, et une page 404. La barre de navigation s'adapte au rôle et
-affiche « Bientôt » pour les futures pages de réclamations et de statistiques.
+**Pages** :
+
+| Route                     | Rôles  | Contenu |
+|---------------------------|--------|---------|
+| `/connexion`, `/inscription` | public | validation côté client (email valide, mot de passe de 8 caractères minimum) |
+| `/profil`                 | tous   | modifier son nom, changer son mot de passe en saisissant l'ancien |
+| `/reclamations`           | tous   | liste paginée (10 par page) filtrable par statut (`?statut=...&page=...` dans l'URL) ; client : « Mes réclamations » ; agent : réclamations de ses services ou affectées (badge « vous ») ; admin : toutes, bouton « Nouvelles à classer » |
+| `/reclamations/nouvelle`  | CLIENT | titre, description, pièces jointes facultatives (pas de catégorie : le classement est fait ensuite) |
+| `/reclamations/:id`       | tous   | détail, historique, commentaires, pièces jointes et actions selon le rôle (voir ci-dessous) |
+| `/admin/referentiels`     | ADMIN  | services et catégories (création, modification, suppression), agents rattachés à chaque service (choisis parmi les comptes AGENT actifs) |
+| `/admin/utilisateurs`     | ADMIN  | liste, création d'un agent ou admin, changement de rôle, activation/désactivation |
+| `/403`, `*`               | —      | accès refusé, page introuvable |
+
+La barre de navigation s'adapte au rôle (« Statistiques » est encore marquée « Bientôt »).
+
+**Règles d'affichage des réclamations** (`src/claims/claimRules.js`, copie des règles du
+claim-service : les actions interdites sont masquées, le serveur revérifie tout) :
+
+| Action sur le détail | Client (propriétaire) | Agent | Admin |
+|----------------------|-----------------------|-------|-------|
+| Commentaire public / interne | public seulement ; ne voit jamais les internes | les deux (internes sur fond ambré, badge « Interne ») | les deux |
+| Complément d'information (BF9) | réclamation ouverte | — | — |
+| Classer (NEW → CLASSIFIED) | — | — | oui |
+| Rejeter (NEW → REJECTED) | — | — | oui |
+| Corriger catégorie / service | — | CLASSIFIED, ASSIGNED, IN_PROGRESS | idem |
+| Affecter (CLASSIFIED, agent facultatif) / réaffecter (ASSIGNED, IN_PROGRESS, agent obligatoire) | — | oui | oui |
+| Prendre en charge (ASSIGNED → IN_PROGRESS), Marquer comme résolue (IN_PROGRESS → RESOLVED) | — | oui | oui |
+| Clôturer / Rouvrir (RESOLVED → CLOSED / IN_PROGRESS) | oui | — | — |
+| Pièces jointes | ajout tant que la réclamation est ouverte et qu'il y en a moins de 5 ; téléchargement toujours | idem | idem |
+
+Erreurs : message du serveur précédé de sa nature (« Action non autorisée » 403, « Introuvable »
+404, « Action impossible » 409) ; les 400 de validation s'affichent sous chaque champ. Après un
+409 ou un 404, la réclamation est rechargée (son état a pu changer entre-temps). Une réclamation
+non visible affiche « Réclamation introuvable ».
+
+**Pièces jointes** : contrôles côté client avant envoi (PDF, PNG ou JPG, 5 Mo par fichier,
+5 par réclamation ; le serveur vérifie en plus la signature du fichier). Le téléchargement se fait
+par `fetch` avec l'en-tête `Authorization`, puis enregistrement du fichier reçu (`Blob`) : le jeton
+n'apparaît jamais dans une URL. À la création, la réclamation est d'abord enregistrée puis les
+fichiers envoyés ; si l'envoi échoue, la page de détail le signale et permet de réessayer.
 
 **Authentification** :
 - le jeton est stocké à un seul endroit (`src/auth/tokenStorage.js`) et ajouté automatiquement
@@ -152,10 +187,14 @@ frontend/
   src/
     main.jsx, AppRoutes.jsx      point d'entrée et plan des routes
     config.js, navigation.js     URL de l'API, libellés des rôles, menu par rôle
-    api/                         client HTTP (client.js) et endpoints (authApi.js)
+    api/                         client HTTP (client.js) et endpoints (authApi.js, claimsApi.js)
     auth/                        jeton, contexte d'authentification, routes protégées
+    claims/                      règles d'affichage par rôle et statut, pièces jointes, messages d'erreur
     components/                  mise en page, barre de navigation, champs, alertes
-    pages/                       connexion, inscription, profil, admin, 403/404
+    components/claims/           badge de statut, pagination, historique, commentaires, pièces jointes,
+                                 actions de statut, classement, affectation, complément
+    pages/                       connexion, inscription, profil, réclamations (liste, création,
+                                 détail), admin (utilisateurs, référentiels), 403/404
     utils/                       validation et formatage
     test/                        tests Vitest et utilitaires
 ```

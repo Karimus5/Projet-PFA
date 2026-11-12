@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, NavLink } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { ROLE_LABELS } from '../config';
 import { navItemsFor } from '../navigation';
 
 function NavItem({ item, onNavigate, vertical }) {
+  const { pathname } = useLocation();
   const base = vertical ? 'block rounded-md px-3 py-2 text-base' : 'rounded-md px-3 py-2 text-sm';
   if (!item.available) {
     return (
@@ -22,9 +23,10 @@ function NavItem({ item, onNavigate, vertical }) {
     <NavLink
       to={item.to}
       onClick={onNavigate}
-      className={({ isActive }) =>
-        `${base} font-medium ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100'}`
-      }
+      className={({ isActive }) => {
+        const active = isActive && !(item.exclude && pathname.startsWith(item.exclude));
+        return `${base} font-medium ${active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100'}`;
+      }}
     >
       {item.label}
     </NavLink>

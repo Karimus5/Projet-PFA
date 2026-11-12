@@ -45,10 +45,16 @@ async function readJson(response) {
 /**
  * Appel à l'API Gateway. Ajoute automatiquement « Authorization: Bearer <jeton> » (sauf auth: false).
  * Renvoie le JSON de la réponse, ou lève une ApiError avec un message en français.
+ *
+ * - body : objet (envoyé en JSON) ou FormData (multipart : le navigateur pose lui-même le
+ *   Content-Type avec sa « boundary », il ne faut donc pas le fixer ici) ;
+ * - responseType: 'blob' : renvoie le contenu binaire (téléchargement de pièce jointe). Le jeton
+ *   reste dans l'en-tête Authorization : il n'apparaît jamais dans une URL.
  */
-export async function apiRequest(path, { method = 'GET', body, auth = true } = {}) {
-  const headers = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+export async function apiRequest(path, { method = 'GET', body, auth = true, responseType = 'json' } = {}) {
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  const headers = { Accept: responseType === 'blob' ? '*/*' : 'application/json' };
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
 
   const token = auth ? tokenStorage.get() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -58,12 +64,13 @@ export async function apiRequest(path, { method = 'GET', body, auth = true } = {
     response = await fetch(`${API_URL}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, DEFAULT_MESSAGES[0]);
   }
 
+  if (response.ok && responseType === 'blob') return response.blob();
   const data = await readJson(response);
   if (response.ok) return data;
 

@@ -13,7 +13,8 @@ describe('Affichage selon le rôle', () => {
     expect(await screen.findByRole('heading', { name: 'Accès refusé' })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Navigation principale' });
     expect(within(nav).queryByRole('link', { name: 'Utilisateurs' })).not.toBeInTheDocument();
-    expect(within(nav).getByText('Mes réclamations')).toHaveAttribute('aria-disabled', 'true');
+    expect(within(nav).getByRole('link', { name: 'Mes réclamations' })).toHaveAttribute('href', '/reclamations');
+    expect(within(nav).queryByRole('link', { name: 'Référentiels' })).not.toBeInTheDocument();
     // La liste des utilisateurs n'a jamais été demandée.
     expect(fetchMock.mock.calls.some(([url]) => url.includes('/admin/'))).toBe(false);
   });

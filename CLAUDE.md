@@ -20,7 +20,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
 | ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | à faire  |
-| frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth + admin) |
+| frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth, admin, réclamations) |
 
 Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-service avec timeout + repli ;
 événements asynchrones RabbitMQ pour notifications et statistiques.
@@ -150,20 +150,42 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Lancement : `cd frontend; npm install; npm run dev` ; `npm test` ; `npm run build`.
 - `VITE_API_URL` (défaut http://localhost:8080, modèle `frontend/.env.example`) : le frontend
   n'appelle QUE la gateway.
-- Structure `src/` : `api/client.js` (fetch + `ApiError` + 401 centralisé), `api/authApi.js`
-  (endpoints, alignés sur Dtos.java), `auth/tokenStorage.js` (SEUL accès au jeton),
-  `auth/AuthContext.jsx` (user lu via GET /me), `auth/RouteGuards.jsx` (`ProtectedRoute roles`,
-  `GuestOnlyRoute`, `HomeRedirect`), `navigation.js` (menu par rôle + emplacements « Bientôt »),
-  `components/`, `pages/`, `utils/` (validation identique au backend, format de date),
-  `test/` (setup, `renderApp`, `mockApi`).
-- Routes : `/connexion`, `/inscription`, `/profil`, `/admin/utilisateurs` (ADMIN), `/403`, `*` (404).
+- Structure `src/` : `api/client.js` (fetch + `ApiError` + 401 centralisé ; `body` FormData =
+  multipart sans Content-Type forcé ; `responseType: 'blob'` = téléchargement), `api/authApi.js` et
+  `api/claimsApi.js` (endpoints, alignés sur les Dtos.java), `auth/tokenStorage.js` (SEUL accès au
+  jeton), `auth/AuthContext.jsx` (user lu via GET /me), `auth/RouteGuards.jsx` (`ProtectedRoute
+  roles`, `GuestOnlyRoute`, `HomeRedirect`), `navigation.js` (menu par rôle ; `exclude` = sous-chemin
+  qui ne surligne pas l'entrée), `claims/` (`claimRules.js`, `attachmentRules.js`, `errors.js`),
+  `components/` (+ `components/claims/`), `pages/`, `utils/` (validation identique au backend,
+  formats date/heure/taille), `test/` (setup, `renderApp`, `mockApi`, données `claimDetail`,
+  `assignedClaim`, `REFERENCE_HANDLERS`).
+- Routes : `/connexion`, `/inscription`, `/profil`, `/reclamations` et `/reclamations/:id` (tous
+  les rôles, contenu selon le rôle), `/reclamations/nouvelle` (CLIENT), `/admin/utilisateurs` et
+  `/admin/referentiels` (ADMIN), `/403`, `*` (404).
+- Réclamations (étape 5c) :
+  - une seule liste et un seul détail pour les 3 rôles ; filtre statut + page dans l'URL
+    (`?statut=&page=`, 10 par page). Seul filtre serveur disponible : le statut (limite signalée).
+  - `claims/claimRules.js` = copie de `ClaimStatus`/`ClaimWorkflow`/`ClaimService` (transitions par
+    rôle, qui peut classer / corriger / affecter, commentaires internes, complément). Les actions
+    interdites sont MASQUÉES (pas tentées) ; à mettre à jour si le workflow serveur change.
+    CLASSIFIED/ASSIGNED passent par les formulaires dédiés, jamais par PATCH /status.
+  - client : jamais de référentiel (la gateway répondrait 403), jamais de commentaire interne
+    (filtré par le serveur ET par `visibleComments`) ; boutons Clôturer/Rouvrir seulement en RESOLVED.
+  - détail : `perform(action, texte)` centralise succès/erreur ; 409 ou 404 → rechargement ;
+    messages « Action non autorisée » (403), « Introuvable » (404), « Action impossible » (409) ;
+    400 par champ via `err.fieldErrors`. Panneaux réinitialisés par `key` (updatedAt + statut).
+  - pièces jointes : contrôle client (extension + type MIME, 5 Mo, 5 max) ; téléchargement par
+    fetch authentifié → Blob → lien `blob:` temporaire (jamais de jeton dans une URL).
+  - auteurs des commentaires et de l'historique : rôle seulement (« Vous » pour soi), le backend
+    ne renvoie pas de nom (limite signalée).
+  - admin référentiels : agents à rattacher = comptes AGENT actifs de `GET /api/auth/admin/users`.
 - Règles : rôle uniquement depuis GET /api/auth/me (jamais décodé du JWT) ; tout 401 reçu AVEC un
   jeton → déconnexion + /connexion (« session expirée ») ; un 401 sans jeton (mauvais mot de passe)
   est juste affiché. Erreurs : `err.message` + `err.fieldErrors` (champ → message) ; 409 → champ email.
 - Jeton en `sessionStorage` (compromis documenté dans tokenStorage.js et le README : survit au
   rechargement, effacé à la fermeture de l'onglet, mais lisible en cas de XSS ; alternative =
   cookie HttpOnly, nécessite de modifier le backend).
-- Futures pages de réclamations : ajouter la route dans `AppRoutes.jsx` et passer l'entrée
+- Futures pages (statistiques) : ajouter la route dans `AppRoutes.jsx` et passer l'entrée
   correspondante de `navigation.js` à `available: true` avec un `to`.
 
 ## JWT (contrat partagé entre auth-service et la gateway)
@@ -249,8 +271,8 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 3. ✅ claim-service sans IA (BF6–BF15, BF22, BF23) ; notification-service (BF10), stats-service
    (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service + jeu de données + notebook d'évaluation (BF16–BF20, objectif ≥ 85 % accuracy / F1 macro).
-5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; à venir : pages
-   réclamations client/agent/admin et tableau de bord.
+5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; ✅ 5c (pages
+   réclamations client/agent/admin, référentiels) ; à venir : tableau de bord (stats-service).
 6. Tests d'intégration, charge, évaluation du modèle.
 7. Documentation (OpenAPI/Swagger), rapport, soutenance.
 
