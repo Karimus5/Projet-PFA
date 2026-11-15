@@ -30,8 +30,8 @@ export default function AttachmentsSection({ claim, onPerform }) {
 
   return (
     <section className="card" aria-labelledby="pieces-titre">
-      <h2 id="pieces-titre" className="text-lg font-medium text-slate-900">
-        Pièces jointes <span className="text-slate-500">({attachments.length} / {MAX_FILES_PER_CLAIM})</span>
+      <h2 id="pieces-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">
+        Pièces jointes <span className="text-slate-500 dark:text-slate-400">({attachments.length} / {MAX_FILES_PER_CLAIM})</span>
       </h2>
       {downloadError && (
         <div className="mt-3">
@@ -40,14 +40,14 @@ export default function AttachmentsSection({ claim, onPerform }) {
       )}
 
       {attachments.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">Aucune pièce jointe.</p>
+        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Aucune pièce jointe.</p>
       ) : (
-        <ul className="mt-3 divide-y divide-slate-100" aria-label="Liste des pièces jointes">
+        <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800" aria-label="Liste des pièces jointes">
           {attachments.map((attachment) => (
             <li key={attachment.id} className="flex items-center justify-between gap-3 py-2">
               <div className="min-w-0 text-sm">
-                <p className="truncate font-medium text-slate-800">{attachment.fileName}</p>
-                <p className="text-xs text-slate-500">
+                <p className="truncate font-medium text-slate-800 dark:text-slate-200">{attachment.fileName}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {formatSize(attachment.size)} · {formatDateTime(attachment.uploadedAt)}
                 </p>
               </div>
@@ -69,7 +69,7 @@ export default function AttachmentsSection({ claim, onPerform }) {
       {canUpload ? (
         <UploadForm claim={claim} onPerform={onPerform} />
       ) : (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
           {isOpen(claim.status)
             ? `Nombre maximal de pièces jointes atteint (${MAX_FILES_PER_CLAIM}).`
             : 'Réclamation terminée : ajout de pièces jointes impossible.'}
@@ -105,7 +105,7 @@ function UploadForm({ claim, onPerform }) {
   }
 
   return (
-    <form className="mt-4 space-y-3 border-t border-slate-200 pt-4" onSubmit={handleSubmit} noValidate>
+    <form className="mt-4 space-y-3 border-t border-slate-200 dark:border-slate-700 pt-4" onSubmit={handleSubmit} noValidate>
       <FilePicker
         id="ajout-pieces"
         label="Ajouter des pièces jointes"

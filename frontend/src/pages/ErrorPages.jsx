@@ -3,9 +3,9 @@ import { Link } from 'react-router';
 function ErrorPage({ code, title, children }) {
   return (
     <div className="mx-auto max-w-lg py-12 text-center">
-      <p className="text-5xl font-bold text-indigo-600">{code}</p>
-      <h1 className="mt-4 text-2xl font-semibold text-slate-900">{title}</h1>
-      <p className="mt-2 text-slate-600">{children}</p>
+      <p className="text-5xl font-bold text-indigo-600 dark:text-indigo-400">{code}</p>
+      <h1 className="mt-4 text-2xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
+      <p className="mt-2 text-slate-600 dark:text-slate-400">{children}</p>
       <Link to="/" className="btn-primary mt-6">
         Retour à l'accueil
       </Link>

@@ -1,7 +1,7 @@
 const STYLES = {
-  error: 'border-red-200 bg-red-50 text-red-800',
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  info: 'border-sky-200 bg-sky-50 text-sky-800',
+  error: 'border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-200',
+  success: 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200',
+  info: 'border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200',
 };
 
 /** Message de retour. Les erreurs sont annoncées immédiatement aux lecteurs d'écran (role="alert"). */

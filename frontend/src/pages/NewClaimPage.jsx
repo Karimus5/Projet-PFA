@@ -73,9 +73,9 @@ export default function NewClaimPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link to="/reclamations" className="text-sm text-indigo-700 hover:underline">← Mes réclamations</Link>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-900">Nouvelle réclamation</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <Link to="/reclamations" className="text-sm text-indigo-700 dark:text-indigo-300 hover:underline">← Mes réclamations</Link>
+        <h1 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">Nouvelle réclamation</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Décrivez votre problème : votre réclamation sera classée puis transmise au service concerné.
         </p>
       </div>

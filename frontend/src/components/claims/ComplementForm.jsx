@@ -36,7 +36,7 @@ export default function ComplementForm({ claimId, onPerform }) {
   }
 
   return (
-    <form className="mt-4 space-y-3 border-t border-slate-200 pt-4" onSubmit={handleSubmit} noValidate>
+    <form className="mt-4 space-y-3 border-t border-slate-200 dark:border-slate-700 pt-4" onSubmit={handleSubmit} noValidate>
       <TextAreaField
         id="complement"
         label="Complément d'information"

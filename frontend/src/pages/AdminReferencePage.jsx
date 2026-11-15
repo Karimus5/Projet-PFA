@@ -61,8 +61,8 @@ export default function AdminReferencePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Référentiels</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Référentiels</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Services de traitement, catégories de réclamations et agents rattachés à chaque service.
         </p>
       </div>
@@ -103,11 +103,11 @@ function ServicesSection({ services, onPerform }) {
 
   return (
     <section className="card" aria-labelledby="services-titre">
-      <h2 id="services-titre" className="text-lg font-medium text-slate-900">Services ({services.length})</h2>
-      <p className="mt-1 text-xs text-slate-500">
+      <h2 id="services-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Services ({services.length})</h2>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Un service qui traite encore des catégories ou des réclamations ne peut pas être supprimé.
       </p>
-      <ul className="mt-4 divide-y divide-slate-100">
+      <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
         {services.map((service) =>
           editingId === service.id ? (
             <li key={service.id} className="py-3">
@@ -126,8 +126,8 @@ function ServicesSection({ services, onPerform }) {
           ) : (
             <li key={service.id} className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0 text-sm">
-                <p className="font-medium text-slate-900">{service.name}</p>
-                {service.description && <p className="text-slate-500">{service.description}</p>}
+                <p className="font-medium text-slate-900 dark:text-slate-100">{service.name}</p>
+                {service.description && <p className="text-slate-500 dark:text-slate-400">{service.description}</p>}
               </div>
               <div className="flex shrink-0 gap-2">
                 <button type="button" className="btn-secondary py-1" onClick={() => setEditingId(service.id)}
@@ -143,8 +143,8 @@ function ServicesSection({ services, onPerform }) {
           ),
         )}
       </ul>
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <h3 className="mb-2 text-sm font-medium text-slate-700">Nouveau service</h3>
+      <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
+        <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Nouveau service</h3>
         <RefForm
           idPrefix="nouveau-service"
           initial={{ name: '', description: '' }}
@@ -169,9 +169,9 @@ function CategoriesSection({ categories, services, onPerform }) {
 
   return (
     <section className="card" aria-labelledby="categories-titre">
-      <h2 id="categories-titre" className="text-lg font-medium text-slate-900">Catégories ({categories.length})</h2>
-      <p className="mt-1 text-xs text-slate-500">Chaque catégorie est traitée par un service.</p>
-      <ul className="mt-4 divide-y divide-slate-100">
+      <h2 id="categories-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Catégories ({categories.length})</h2>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Chaque catégorie est traitée par un service.</p>
+      <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
         {categories.map((category) =>
           editingId === category.id ? (
             <li key={category.id} className="py-3">
@@ -195,10 +195,10 @@ function CategoriesSection({ categories, services, onPerform }) {
           ) : (
             <li key={category.id} className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0 text-sm">
-                <p className="font-medium text-slate-900">
-                  {category.name} <span className="font-normal text-slate-500">→ {category.service?.name}</span>
+                <p className="font-medium text-slate-900 dark:text-slate-100">
+                  {category.name} <span className="font-normal text-slate-500 dark:text-slate-400">→ {category.service?.name}</span>
                 </p>
-                {category.description && <p className="text-slate-500">{category.description}</p>}
+                {category.description && <p className="text-slate-500 dark:text-slate-400">{category.description}</p>}
               </div>
               <div className="flex shrink-0 gap-2">
                 <button type="button" className="btn-secondary py-1" onClick={() => setEditingId(category.id)}
@@ -214,8 +214,8 @@ function CategoriesSection({ categories, services, onPerform }) {
           ),
         )}
       </ul>
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <h3 className="mb-2 text-sm font-medium text-slate-700">Nouvelle catégorie</h3>
+      <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
+        <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Nouvelle catégorie</h3>
         <RefForm
           idPrefix="nouvelle-categorie"
           initial={{ name: '', description: '', serviceId: '' }}
@@ -278,7 +278,7 @@ function RefForm({ idPrefix, initial, services, submitLabel, onSubmit, onCancel,
       />
       {withService && (
         <div>
-          <label htmlFor={`${idPrefix}-service`} className="mb-1 block text-sm font-medium text-slate-700">Service</label>
+          <label htmlFor={`${idPrefix}-service`} className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Service</label>
           <select
             id={`${idPrefix}-service`}
             className={`input ${errors.serviceId ? 'input-error' : ''}`}
@@ -291,7 +291,7 @@ function RefForm({ idPrefix, initial, services, submitLabel, onSubmit, onCancel,
               <option key={service.id} value={service.id}>{service.name}</option>
             ))}
           </select>
-          {errors.serviceId && <p className="mt-1 text-sm text-red-600">{errors.serviceId}</p>}
+          {errors.serviceId && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.serviceId}</p>}
         </div>
       )}
       <div className="flex gap-2 md:pt-6">
@@ -365,16 +365,16 @@ function ServiceAgentsSection({ services, agents, onPerform }) {
 
   return (
     <section className="card" aria-labelledby="agents-titre">
-      <h2 id="agents-titre" className="text-lg font-medium text-slate-900">Agents des services</h2>
-      <p className="mt-1 text-xs text-slate-500">
+      <h2 id="agents-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Agents des services</h2>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Un agent voit les réclamations des services auxquels il est rattaché et peut y être affecté.
       </p>
       {services.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">Créez d’abord un service.</p>
+        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Créez d’abord un service.</p>
       ) : (
         <div className="mt-4 space-y-4">
           <div className="sm:w-72">
-            <label htmlFor="agents-service" className="mb-1 block text-sm font-medium text-slate-700">Service</label>
+            <label htmlFor="agents-service" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Service</label>
             <select id="agents-service" className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -387,13 +387,13 @@ function ServiceAgentsSection({ services, agents, onPerform }) {
           ) : membersError ? (
             <Alert type="error">{membersError}</Alert>
           ) : members.length === 0 ? (
-            <p className="text-sm text-slate-500">Aucun agent rattaché à ce service.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Aucun agent rattaché à ce service.</p>
           ) : (
-            <ul className="divide-y divide-slate-100" aria-label={`Agents du service ${service?.name ?? ''}`}>
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800" aria-label={`Agents du service ${service?.name ?? ''}`}>
               {members.map((member) => (
                 <li key={member.agentId} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span className="font-medium text-slate-800">
-                    {member.agentName} <span className="font-normal text-slate-500">(n° {member.agentId})</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                    {member.agentName} <span className="font-normal text-slate-500 dark:text-slate-400">(n° {member.agentId})</span>
                   </span>
                   <button type="button" className="btn-danger py-1" disabled={busy} onClick={() => remove(member)}
                     aria-label={`Retirer ${member.agentName} du service`}>
@@ -404,9 +404,9 @@ function ServiceAgentsSection({ services, agents, onPerform }) {
             </ul>
           )}
 
-          <div className="flex flex-wrap items-end gap-3 border-t border-slate-200 pt-4">
+          <div className="flex flex-wrap items-end gap-3 border-t border-slate-200 dark:border-slate-700 pt-4">
             <div className="sm:w-72">
-              <label htmlFor="agents-ajout" className="mb-1 block text-sm font-medium text-slate-700">Agent à rattacher</label>
+              <label htmlFor="agents-ajout" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Agent à rattacher</label>
               <select id="agents-ajout" className="input" value={agentId} onChange={(e) => setAgentId(e.target.value)}
                 disabled={candidates.length === 0}>
                 <option value="">{candidates.length === 0 ? 'Aucun agent disponible' : '— Choisir un agent —'}</option>
@@ -421,7 +421,7 @@ function ServiceAgentsSection({ services, agents, onPerform }) {
             </button>
           </div>
           {agents.length === 0 && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Aucun compte AGENT : créez-en un dans la page Utilisateurs.
             </p>
           )}

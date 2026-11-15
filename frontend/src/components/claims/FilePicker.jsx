@@ -16,7 +16,7 @@ export default function FilePicker({ id, label, files, onChange, errors = [], al
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
         {label}
       </label>
       <input
@@ -27,22 +27,22 @@ export default function FilePicker({ id, label, files, onChange, errors = [], al
         disabled={disabled}
         onChange={handleSelect}
         aria-describedby={`${id}-aide`}
-        className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100"
+        className="block w-full text-sm text-slate-700 dark:text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100"
       />
-      <p id={`${id}-aide`} className="mt-1 text-xs text-slate-500">
+      <p id={`${id}-aide`} className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         PDF, PNG ou JPG · 5 Mo maximum par fichier · {remaining} fichier{remaining > 1 ? 's' : ''} au plus.
       </p>
 
       {files.length > 0 && (
         <ul className="mt-2 space-y-1" aria-label="Fichiers sélectionnés">
           {files.map((file, index) => (
-            <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded border border-slate-200 px-3 py-1.5 text-sm">
+            <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-sm">
               <span className="truncate">
-                {file.name} <span className="text-slate-500">({formatSize(file.size)})</span>
+                {file.name} <span className="text-slate-500 dark:text-slate-400">({formatSize(file.size)})</span>
               </span>
               <button
                 type="button"
-                className="text-xs font-medium text-red-600 hover:underline"
+                className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline"
                 onClick={() => onChange(files.filter((_, i) => i !== index))}
                 aria-label={`Retirer ${file.name}`}
               >
@@ -54,7 +54,7 @@ export default function FilePicker({ id, label, files, onChange, errors = [], al
       )}
 
       {errors.length > 0 && (
-        <ul role="alert" className="mt-2 space-y-0.5 text-sm text-red-600">
+        <ul role="alert" className="mt-2 space-y-0.5 text-sm text-red-600 dark:text-red-400">
           {errors.map((message) => (
             <li key={message}>{message}</li>
           ))}

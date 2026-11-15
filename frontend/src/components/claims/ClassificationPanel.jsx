@@ -35,17 +35,17 @@ export default function ClassificationPanel({ claim, user, categories, services,
 
   return (
     <section className="card" aria-labelledby="classement-titre">
-      <h2 id="classement-titre" className="text-lg font-medium text-slate-900">
+      <h2 id="classement-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">
         {initial ? 'Classer la réclamation' : 'Corriger la classification'}
       </h2>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {initial
           ? 'Choisissez la catégorie ; le service est celui qui traite la catégorie, sauf choix contraire.'
           : 'Le statut est conservé ; la correction est tracée dans un commentaire interne.'}
       </p>
       <form className="mt-3 space-y-3" onSubmit={handleSubmit} noValidate>
         <div>
-          <label htmlFor="classement-categorie" className="mb-1 block text-sm font-medium text-slate-700">Catégorie</label>
+          <label htmlFor="classement-categorie" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Catégorie</label>
           <select
             id="classement-categorie"
             className={`input ${error ? 'input-error' : ''}`}
@@ -59,10 +59,10 @@ export default function ClassificationPanel({ claim, user, categories, services,
               <option key={category.id} value={category.id}>{category.name}</option>
             ))}
           </select>
-          {error && <p id="classement-erreur" className="mt-1 text-sm text-red-600">{error}</p>}
+          {error && <p id="classement-erreur" className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>}
         </div>
         <div>
-          <label htmlFor="classement-service" className="mb-1 block text-sm font-medium text-slate-700">Service</label>
+          <label htmlFor="classement-service" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Service</label>
           <select id="classement-service" className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             <option value="">
               {selectedCategory ? `Service de la catégorie (${selectedCategory.service?.name})` : 'Service de la catégorie'}

@@ -15,12 +15,12 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Mon profil</h1>
-        <p className="mt-1 text-sm text-slate-600">Consultez et modifiez vos informations personnelles.</p>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Mon profil</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Consultez et modifiez vos informations personnelles.</p>
       </div>
 
       <section className="card" aria-labelledby="infos-titre">
-        <h2 id="infos-titre" className="text-lg font-medium text-slate-900">Informations du compte</h2>
+        <h2 id="infos-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Informations du compte</h2>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">
           <Info label="Nom" value={user.name} />
           <Info label="Email" value={user.email} />
@@ -40,8 +40,8 @@ export default function ProfilePage() {
 function Info({ label, value }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm text-slate-900">{value}</dd>
+      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{value}</dd>
     </div>
   );
 }
@@ -75,7 +75,7 @@ function NameForm() {
 
   return (
     <section className="card" aria-labelledby="nom-titre">
-      <h2 id="nom-titre" className="text-lg font-medium text-slate-900">Modifier mon nom</h2>
+      <h2 id="nom-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Modifier mon nom</h2>
       <form className="mt-4 space-y-4" onSubmit={handleSubmit} noValidate>
         {message && <Alert type={message.type}>{message.text}</Alert>}
         <FormField id="profil-nom" label="Nom complet" autoComplete="name" value={name}
@@ -129,7 +129,7 @@ function PasswordForm() {
 
   return (
     <section className="card" aria-labelledby="mdp-titre">
-      <h2 id="mdp-titre" className="text-lg font-medium text-slate-900">Changer mon mot de passe</h2>
+      <h2 id="mdp-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Changer mon mot de passe</h2>
       <form className="mt-4 space-y-4" onSubmit={handleSubmit} noValidate>
         {message && <Alert type={message.type}>{message.text}</Alert>}
         <FormField id="currentPassword" label="Mot de passe actuel" type="password" autoComplete="current-password"

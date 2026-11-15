@@ -18,13 +18,13 @@ export const STATUS_LABELS = {
 };
 
 export const STATUS_STYLES = {
-  NEW: 'bg-sky-100 text-sky-800',
-  CLASSIFIED: 'bg-violet-100 text-violet-800',
-  ASSIGNED: 'bg-indigo-100 text-indigo-800',
-  IN_PROGRESS: 'bg-amber-100 text-amber-800',
-  RESOLVED: 'bg-emerald-100 text-emerald-800',
-  CLOSED: 'bg-slate-200 text-slate-700',
-  REJECTED: 'bg-red-100 text-red-800',
+  NEW: 'bg-sky-100 dark:bg-sky-900/50 text-sky-800 dark:text-sky-200',
+  CLASSIFIED: 'bg-violet-100 dark:bg-violet-900/50 text-violet-800 dark:text-violet-200',
+  ASSIGNED: 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200',
+  IN_PROGRESS: 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200',
+  RESOLVED: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200',
+  CLOSED: 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300',
+  REJECTED: 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200',
 };
 
 /** Réclamation « ouverte » : commentaires, compléments et pièces jointes encore possibles. */

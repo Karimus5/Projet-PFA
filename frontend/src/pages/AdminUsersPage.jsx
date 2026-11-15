@@ -78,8 +78,8 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Gestion des utilisateurs</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Gestion des utilisateurs</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Créez des comptes agent ou administrateur, modifiez les rôles et activez ou désactivez les comptes.
         </p>
       </div>
@@ -93,9 +93,9 @@ export default function AdminUsersPage() {
       <CreateUserForm onCreated={handleCreated} />
 
       <section className="card p-0" aria-labelledby="liste-titre">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 id="liste-titre" className="text-lg font-medium text-slate-900">
-            Utilisateurs {!loading && !loadError && <span className="text-slate-500">({users.length})</span>}
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
+          <h2 id="liste-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">
+            Utilisateurs {!loading && !loadError && <span className="text-slate-500 dark:text-slate-400">({users.length})</span>}
           </h2>
           <button type="button" className="btn-secondary" onClick={load} disabled={loading}>
             Actualiser
@@ -110,8 +110,8 @@ export default function AdminUsersPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-950 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <tr>
                   <th scope="col" className="px-6 py-3">Nom</th>
                   <th scope="col" className="px-6 py-3">Email</th>
@@ -121,16 +121,16 @@ export default function AdminUsersPage() {
                   <th scope="col" className="px-6 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {users.map((u) => {
                   const isSelf = u.id === currentUser.id;
                   const busy = busyId === u.id;
                   return (
                     <tr key={u.id}>
-                      <td className="whitespace-nowrap px-6 py-3 font-medium text-slate-900">
-                        {u.name} {isSelf && <span className="text-xs font-normal text-slate-500">(vous)</span>}
+                      <td className="whitespace-nowrap px-6 py-3 font-medium text-slate-900 dark:text-slate-100">
+                        {u.name} {isSelf && <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(vous)</span>}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-3 text-slate-700">{u.email}</td>
+                      <td className="whitespace-nowrap px-6 py-3 text-slate-700 dark:text-slate-300">{u.email}</td>
                       <td className="px-6 py-3">
                         <label className="sr-only" htmlFor={`role-${u.id}`}>Rôle de {u.name}</label>
                         <select
@@ -148,16 +148,16 @@ export default function AdminUsersPage() {
                       <td className="whitespace-nowrap px-6 py-3">
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            u.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
+                            u.active ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                           }`}
                         >
                           {u.active ? 'Actif' : 'Désactivé'}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-3 text-slate-600">{formatDate(u.createdAt)}</td>
+                      <td className="whitespace-nowrap px-6 py-3 text-slate-600 dark:text-slate-400">{formatDate(u.createdAt)}</td>
                       <td className="whitespace-nowrap px-6 py-3 text-right">
                         {isSelf ? (
-                          <span className="text-xs text-slate-400">—</span>
+                          <span className="text-xs text-slate-400 dark:text-slate-500">—</span>
                         ) : (
                           <button
                             type="button"
@@ -225,8 +225,8 @@ function CreateUserForm({ onCreated }) {
 
   return (
     <section className="card" aria-labelledby="creation-titre">
-      <h2 id="creation-titre" className="text-lg font-medium text-slate-900">Créer un agent ou un administrateur</h2>
-      <p className="mt-1 text-sm text-slate-600">Les clients créent eux-mêmes leur compte via l'inscription.</p>
+      <h2 id="creation-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Créer un agent ou un administrateur</h2>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Les clients créent eux-mêmes leur compte via l'inscription.</p>
       {error && (
         <div className="mt-4">
           <Alert type="error">{error}</Alert>
@@ -239,7 +239,7 @@ function CreateUserForm({ onCreated }) {
         <FormField id="new-password" label="Mot de passe initial" type="password" autoComplete="new-password"
           value={form.password} onChange={update('password')} error={fieldErrors.password} hint="Au moins 8 caractères." />
         <div>
-          <label htmlFor="new-role" className="mb-1 block text-sm font-medium text-slate-700">Rôle</label>
+          <label htmlFor="new-role" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Rôle</label>
           <select id="new-role" className="input" value={form.role} onChange={update('role')}>
             <option value="AGENT">{ROLE_LABELS.AGENT}</option>
             <option value="ADMIN">{ROLE_LABELS.ADMIN}</option>

@@ -44,8 +44,8 @@ export default function LoginPage() {
   return (
     <div className="mx-auto max-w-md">
       <div className="card">
-        <h1 className="text-2xl font-semibold text-slate-900">Connexion</h1>
-        <p className="mt-1 text-sm text-slate-600">Accédez à votre espace de suivi des réclamations.</p>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Connexion</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Accédez à votre espace de suivi des réclamations.</p>
 
         <div className="mt-4 space-y-3">
           {notice && <Alert type="info">{notice}</Alert>}
@@ -77,9 +77,9 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-600">
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
           Pas encore de compte ?{' '}
-          <Link to="/inscription" className="font-medium text-indigo-600 hover:underline">
+          <Link to="/inscription" className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
             Créer un compte client
           </Link>
         </p>

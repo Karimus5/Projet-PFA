@@ -185,6 +185,10 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Jeton en `sessionStorage` (compromis documenté dans tokenStorage.js et le README : survit au
   rechargement, effacé à la fermeture de l'onglet, mais lisible en cas de XSS ; alternative =
   cookie HttpOnly, nécessite de modifier le backend).
+- Thème sombre (ajout hors cahier des charges, demandé par l'utilisateur) : classe `dark` sur
+  `<html>` (`@custom-variant dark` dans `index.css`), `theme/theme.js` (choix en localStorage,
+  sinon thème du système), `components/ThemeToggle.jsx` dans la Navbar, script anti-flash dans
+  `index.html`. **Toute nouvelle classe de couleur doit avoir son équivalent `dark:`.**
 - Futures pages (statistiques) : ajouter la route dans `AppRoutes.jsx` et passer l'entrée
   correspondante de `navigation.js` à `available: true` avec un `to`.
 

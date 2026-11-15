@@ -19,8 +19,8 @@ export default function StatusActions({ claim, user, onPerform }) {
     const hint = hintFor(claim, user);
     return hint ? (
       <section className="card" aria-labelledby="statut-titre">
-        <h2 id="statut-titre" className="text-lg font-medium text-slate-900">Statut</h2>
-        <p className="mt-2 text-sm text-slate-600">{hint}</p>
+        <h2 id="statut-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Statut</h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{hint}</p>
       </section>
     ) : null;
   }
@@ -41,7 +41,7 @@ export default function StatusActions({ claim, user, onPerform }) {
 
   return (
     <section className="card space-y-3" aria-labelledby="statut-titre">
-      <h2 id="statut-titre" className="text-lg font-medium text-slate-900">Faire avancer la réclamation</h2>
+      <h2 id="statut-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Faire avancer la réclamation</h2>
       <TextAreaField
         id="note-statut"
         label="Note (facultative, visible dans l'historique)"

@@ -53,17 +53,17 @@ export default function AssignmentPanel({ claim, services, onPerform }) {
   const reassign = claim.status !== 'CLASSIFIED';
   return (
     <section className="card" aria-labelledby="affectation-titre">
-      <h2 id="affectation-titre" className="text-lg font-medium text-slate-900">
+      <h2 id="affectation-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">
         {reassign ? 'Réaffecter' : 'Affecter à un agent'}
       </h2>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {reassign
           ? 'Le statut est conservé ; un agent du service choisi est obligatoire.'
           : 'Avec un agent, la réclamation passe à « Affectée ». Sans agent, elle reste dans la file du service.'}
       </p>
       <form className="mt-3 space-y-3" onSubmit={handleSubmit} noValidate>
         <div>
-          <label htmlFor="affectation-service" className="mb-1 block text-sm font-medium text-slate-700">Service</label>
+          <label htmlFor="affectation-service" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Service</label>
           <select id="affectation-service" className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             <option value="">— Choisir un service —</option>
             {services.map((service) => (
@@ -72,7 +72,7 @@ export default function AssignmentPanel({ claim, services, onPerform }) {
           </select>
         </div>
         <div>
-          <label htmlFor="affectation-agent" className="mb-1 block text-sm font-medium text-slate-700">Agent</label>
+          <label htmlFor="affectation-agent" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Agent</label>
           <select
             id="affectation-agent"
             className="input"
@@ -88,14 +88,14 @@ export default function AssignmentPanel({ claim, services, onPerform }) {
               </option>
             ))}
           </select>
-          {agentsError && <p className="mt-1 text-sm text-red-600">{agentsError}</p>}
+          {agentsError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{agentsError}</p>}
           {serviceId && !agentsLoading && !agentsError && agents.length === 0 && (
-            <p className="mt-1 text-xs text-amber-700">
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
               Aucun agent n'est rattaché à ce service (rattachement : page Référentiels, administrateur).
             </p>
           )}
         </div>
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <button type="submit" className="btn-primary" disabled={saving || !serviceId}>
           {saving && <Spinner className="h-4 w-4" />}
           {reassign ? 'Réaffecter' : 'Affecter'}

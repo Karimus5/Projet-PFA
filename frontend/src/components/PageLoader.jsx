@@ -9,7 +9,7 @@ export function Spinner({ className = 'h-5 w-5' }) {
 
 export default function PageLoader({ label = 'Chargement…' }) {
   return (
-    <div role="status" className="flex items-center justify-center gap-3 py-16 text-slate-500">
+    <div role="status" className="flex items-center justify-center gap-3 py-16 text-slate-500 dark:text-slate-400">
       <Spinner />
       <span>{label}</span>
     </div>

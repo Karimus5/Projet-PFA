@@ -47,8 +47,8 @@ export default function RegisterPage() {
   return (
     <div className="mx-auto max-w-md">
       <div className="card">
-        <h1 className="text-2xl font-semibold text-slate-900">Créer un compte</h1>
-        <p className="mt-1 text-sm text-slate-600">Inscrivez-vous pour soumettre et suivre vos réclamations.</p>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Créer un compte</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Inscrivez-vous pour soumettre et suivre vos réclamations.</p>
 
         {error && (
           <div className="mt-4">
@@ -72,9 +72,9 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-600">
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
           Déjà inscrit ?{' '}
-          <Link to="/connexion" className="font-medium text-indigo-600 hover:underline">
+          <Link to="/connexion" className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
             Se connecter
           </Link>
         </p>

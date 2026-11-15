@@ -17,17 +17,17 @@ export default function CommentsSection({ claim, user, onPerform }) {
 
   return (
     <section className="card" aria-labelledby="commentaires-titre">
-      <h2 id="commentaires-titre" className="text-lg font-medium text-slate-900">
-        Commentaires <span className="text-slate-500">({comments.length})</span>
+      <h2 id="commentaires-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">
+        Commentaires <span className="text-slate-500 dark:text-slate-400">({comments.length})</span>
       </h2>
       {staff && (
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Les commentaires <strong>internes</strong> (fond ambré) ne sont jamais visibles par le client.
         </p>
       )}
 
       {comments.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">Aucun commentaire pour le moment.</p>
+        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Aucun commentaire pour le moment.</p>
       ) : (
         <ul className="mt-4 space-y-3" aria-label="Liste des commentaires">
           {comments.map((comment) => (
@@ -35,19 +35,19 @@ export default function CommentsSection({ claim, user, onPerform }) {
               key={comment.id}
               data-testid={comment.internal ? 'commentaire-interne' : 'commentaire-public'}
               className={`rounded-md border px-4 py-3 ${
-                comment.internal ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
+                comment.internal ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
               }`}
             >
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span className="font-medium text-slate-700">{authorLabel(comment, user)}</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium text-slate-700 dark:text-slate-300">{authorLabel(comment, user)}</span>
                 <span>· {formatDateTime(comment.createdAt)}</span>
                 {comment.internal ? (
-                  <span className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">Interne</span>
+                  <span className="rounded bg-amber-200 dark:bg-amber-800/60 px-1.5 py-0.5 font-medium text-amber-900 dark:text-amber-100">Interne</span>
                 ) : (
-                  staff && <span className="rounded bg-sky-100 px-1.5 py-0.5 font-medium text-sky-800">Public</span>
+                  staff && <span className="rounded bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 font-medium text-sky-800 dark:text-sky-200">Public</span>
                 )}
               </div>
-              <p className="mt-1 whitespace-pre-line text-sm text-slate-800">{comment.content}</p>
+              <p className="mt-1 whitespace-pre-line text-sm text-slate-800 dark:text-slate-200">{comment.content}</p>
             </li>
           ))}
         </ul>
@@ -56,7 +56,7 @@ export default function CommentsSection({ claim, user, onPerform }) {
       {isOpen(claim.status) ? (
         <CommentForm claimId={claim.id} staff={staff} onPerform={onPerform} />
       ) : (
-        <p className="mt-4 text-sm text-slate-500">Réclamation terminée : il n'est plus possible de commenter.</p>
+        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Réclamation terminée : il n'est plus possible de commenter.</p>
       )}
     </section>
   );
@@ -88,7 +88,7 @@ function CommentForm({ claimId, staff, onPerform }) {
   }
 
   return (
-    <form className="mt-5 space-y-3 border-t border-slate-200 pt-4" onSubmit={handleSubmit} noValidate>
+    <form className="mt-5 space-y-3 border-t border-slate-200 dark:border-slate-700 pt-4" onSubmit={handleSubmit} noValidate>
       <TextAreaField
         id="nouveau-commentaire"
         label={staff ? 'Nouveau commentaire' : 'Votre message'}
@@ -100,7 +100,7 @@ function CommentForm({ claimId, staff, onPerform }) {
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         {staff ? (
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
             Commentaire interne (invisible pour le client)
           </label>
