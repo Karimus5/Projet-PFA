@@ -36,3 +36,9 @@ claims:
     storage-dir: ${java.io.tmpdir}/claim-service-tests/attachments
     max-file-size: 5MB
     max-files-per-claim: 5
+
+# Classement automatique désactivé par défaut dans les tests : seuls les tests dédiés
+# (web/AiClassification*Test) l'activent, avec un faux service IA (WireMock). Aucun test
+# n'appelle le vrai service IA.
+ai-classifier:
+  enabled: false

@@ -14,6 +14,11 @@
     <name>claim-service</name>
     <description>Cycle de vie des réclamations : statuts, commentaires, historique, affectations, pièces jointes</description>
 
+    <properties>
+        <!-- Non géré par Spring Boot : version fixée ici (tests uniquement), comme dans api-gateway. -->
+        <wiremock.version>3.13.2</wiremock.version>
+    </properties>
+
     <dependencies>
         <!-- Pas de Spring Security : l'appelant est identifié par les en-têtes X-User-* posés par
              la gateway après vérification du JWT (voir security/CurrentUserArgumentResolver). -->
@@ -54,6 +59,16 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-config</artifactId>
         </dependency>
+        <!-- Appel REST du service IA (BF16-BF19) : client déclaratif, délais d'attente stricts. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <!-- Disjoncteur devant le service IA (Resilience4j, versions gérées par le BOM Spring Cloud). -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -64,6 +79,13 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Faux service IA pour les tests (aucun test n'appelle le vrai service). -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>${wiremock.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

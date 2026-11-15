@@ -20,7 +20,7 @@ public final class ClaimWorkflow {
 
     /** Rôles autorisés par transition (clé « ANCIEN>NOUVEAU »). */
     private static final Map<String, Set<UserRole>> ALLOWED = Map.of(
-            key(ClaimStatus.NEW, ClaimStatus.CLASSIFIED), Set.of(UserRole.ADMIN),   // tri manuel (sans IA)
+            key(ClaimStatus.NEW, ClaimStatus.CLASSIFIED), Set.of(UserRole.ADMIN, UserRole.SYSTEM), // tri manuel ou IA
             key(ClaimStatus.NEW, ClaimStatus.REJECTED), Set.of(UserRole.ADMIN),     // demande invalide
             key(ClaimStatus.CLASSIFIED, ClaimStatus.ASSIGNED), STAFF,               // affectation
             key(ClaimStatus.ASSIGNED, ClaimStatus.IN_PROGRESS), STAFF,              // prise en charge

@@ -22,12 +22,19 @@ public record ClaimEvent(
         Long assignedAgentId,
         Long actorId,
         UserRole actorRole,
-        Instant occurredAt) {
+        Instant occurredAt,
+        String detail) {
 
     public static ClaimEvent of(ClaimEventType type, Claim claim, ClaimStatus previousStatus, CurrentUser actor) {
+        return of(type, claim, previousStatus, actor, null);
+    }
+
+    /** @param detail information courte et non sensible (ex. « CORRECTED », « confidence=0.92 ») */
+    public static ClaimEvent of(ClaimEventType type, Claim claim, ClaimStatus previousStatus, CurrentUser actor,
+                                String detail) {
         return new ClaimEvent(type, claim.getId(), claim.getClientId(), previousStatus, claim.getStatus(),
                 claim.getCategory() == null ? null : claim.getCategory().getId(),
                 claim.getService() == null ? null : claim.getService().getId(),
-                claim.getAssignedAgentId(), actor.id(), actor.role(), Instant.now());
+                claim.getAssignedAgentId(), actor.id(), actor.role(), Instant.now(), detail);
     }
 }

@@ -4,9 +4,17 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
+import ma.emsi.reclamations.claim.ai.AiCallResult;
+import ma.emsi.reclamations.claim.ai.AiClassifierClient.ClassifyResponse;
 import ma.emsi.reclamations.claim.access.ClaimAccess;
 import ma.emsi.reclamations.claim.access.ClaimAccessPolicy;
+import ma.emsi.reclamations.claim.domain.AiFeedbackDecision;
+import ma.emsi.reclamations.claim.domain.AiPrediction;
+import ma.emsi.reclamations.claim.domain.AiPredictionOutcome;
+import ma.emsi.reclamations.claim.domain.AiPredictionRepository;
 import ma.emsi.reclamations.claim.domain.AttachmentRepository;
 import ma.emsi.reclamations.claim.domain.Category;
 import ma.emsi.reclamations.claim.domain.CategoryRepository;
@@ -37,6 +45,8 @@ import ma.emsi.reclamations.claim.web.dto.Dtos.CommentResponse;
 import ma.emsi.reclamations.claim.web.dto.Dtos.CreateClaimRequest;
 import ma.emsi.reclamations.claim.web.dto.Dtos.PageResponse;
 import ma.emsi.reclamations.claim.web.dto.Dtos.StatusChangeRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +67,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class ClaimService {
 
+    private static final Logger log = LoggerFactory.getLogger(ClaimService.class);
     private static final int MAX_DESCRIPTION_LENGTH = 10_000;
     private static final DateTimeFormatter COMPLEMENT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm 'UTC'");
 
@@ -67,13 +78,14 @@ public class ClaimService {
     private final CommentRepository comments;
     private final StatusHistoryRepository history;
     private final AttachmentRepository attachments;
+    private final AiPredictionRepository predictions;
     private final ClaimAccess access;
     private final ClaimEventDispatcher events;
 
     public ClaimService(ClaimRepository claims, CategoryRepository categories, ProcessingServiceRepository services,
                         ServiceAgentRepository serviceAgents, CommentRepository comments,
                         StatusHistoryRepository history, AttachmentRepository attachments,
-                        ClaimAccess access, ClaimEventDispatcher events) {
+                        AiPredictionRepository predictions, ClaimAccess access, ClaimEventDispatcher events) {
         this.claims = claims;
         this.categories = categories;
         this.services = services;
@@ -81,12 +93,17 @@ public class ClaimService {
         this.comments = comments;
         this.history = history;
         this.attachments = attachments;
+        this.predictions = predictions;
         this.access = access;
         this.events = events;
     }
 
     // --- Client : soumission (BF6) et complément (BF9) -------------------------------------------
 
+    /**
+     * Enregistre la réclamation en NEW (transaction validée au retour). Le classement automatique
+     * est fait ensuite, hors de cette transaction, par {@link ClaimIntakeService}.
+     */
     public ClaimDetail create(CurrentUser user, CreateClaimRequest request) {
         if (!user.isClient()) {
             throw ApiException.forbidden("Seul un client peut soumettre une réclamation");
@@ -163,6 +180,8 @@ public class ClaimService {
     /**
      * NEW → CLASSIFIED (tri manuel, ADMIN uniquement). Sur une réclamation déjà classée et non
      * résolue, corrige la catégorie / le service sans changer le statut (agent du service ou admin).
+     * Si la classification venait de l'IA, le retour d'information est enregistré (BF14, BF20) :
+     * CORRECTED, ou CONFIRMED si la catégorie et le service retenus sont ceux proposés.
      */
     public ClaimDetail classify(CurrentUser user, Long claimId, ClassificationRequest request) {
         Claim claim = access.loadVisible(claimId, user);
@@ -184,14 +203,125 @@ public class ClaimService {
                 || status == ClaimStatus.IN_PROGRESS) {
             String trace = "Classification corrigée : " + nameOf(claim.getCategory()) + " → " + category.getName()
                     + ", service " + nameOf(claim.getService()) + " → " + service.getName();
+            Optional<AiPrediction> prediction = predictions.findByClaimId(claim.getId()).filter(AiPrediction::isApplied);
+            AiFeedbackDecision decision = prediction.map(p -> sameAsPrediction(p, category, service)
+                    ? AiFeedbackDecision.CONFIRMED : AiFeedbackDecision.CORRECTED).orElse(null);
+            if (prediction.isPresent()) {
+                trace += " (proposition IA : " + prediction.get().getPredictedCategory() + ", "
+                        + percent(prediction.get().getConfidence()) + ")";
+            }
             claim.classify(category, service, ClassificationSource.MANUAL, null);
             comments.save(new Comment(claim, user.id(), user.role(), trace, true));
+            prediction.ifPresent(p -> p.recordDecision(decision, category.getName(), service.getName(),
+                    user.id(), user.role()));
             claims.flush();
             events.dispatchAfterCommit(ClaimEvent.of(ClaimEventType.CLASSIFICATION_CHANGED, claim, status, user));
+            if (decision != null) {
+                events.dispatchAfterCommit(ClaimEvent.of(ClaimEventType.CLASSIFICATION_FEEDBACK, claim, status, user,
+                        decision.name()));
+            }
         } else {
             throw ApiException.conflict("La classification ne peut plus être modifiée (statut " + status + ")");
         }
         return detail(claim, user);
+    }
+
+    /**
+     * BF14 — un agent (de la réclamation) ou un admin confirme la catégorie et le service proposés
+     * par l'IA. Statut et classification inchangés ; retour d'information CONFIRMED enregistré et
+     * tracé en commentaire interne. 409 si la classification ne vient pas de l'IA, a déjà été
+     * confirmée ou corrigée, ou si la réclamation n'est plus en cours de traitement.
+     */
+    public ClaimDetail confirmClassification(CurrentUser user, Long claimId) {
+        Claim claim = access.loadVisible(claimId, user);
+        if (!user.role().isStaff()) {
+            throw ApiException.forbidden("Seul un agent ou un administrateur peut confirmer une classification");
+        }
+        ClaimStatus status = claim.getStatus();
+        if (status != ClaimStatus.CLASSIFIED && status != ClaimStatus.ASSIGNED && status != ClaimStatus.IN_PROGRESS) {
+            throw ApiException.conflict("La classification ne peut plus être confirmée (statut " + status + ")");
+        }
+        AiPrediction prediction = predictions.findByClaimId(claim.getId())
+                .filter(p -> p.isApplied() && claim.getClassificationSource() == ClassificationSource.AI)
+                .orElseThrow(() -> ApiException.conflict("Cette réclamation n'a pas été classée par l'IA"));
+        if (prediction.getDecision() != null) {
+            throw ApiException.conflict("La classification proposée par l'IA a déjà été "
+                    + (prediction.getDecision() == AiFeedbackDecision.CONFIRMED ? "confirmée" : "corrigée"));
+        }
+        prediction.recordDecision(AiFeedbackDecision.CONFIRMED, nameOf(claim.getCategory()),
+                nameOf(claim.getService()), user.id(), user.role());
+        comments.save(new Comment(claim, user.id(), user.role(), "Classification IA confirmée : "
+                + nameOf(claim.getCategory()) + ", service " + nameOf(claim.getService()), true));
+        claims.flush();
+        events.dispatchAfterCommit(ClaimEvent.of(ClaimEventType.CLASSIFICATION_FEEDBACK, claim, status, user,
+                AiFeedbackDecision.CONFIRMED.name()));
+        return detail(claim, user);
+    }
+
+    // --- Classement automatique (BF16-BF19), appelé par ClaimIntakeService ---------------------
+
+    /**
+     * Applique le résultat du service IA à une réclamation qui vient d'être créée (encore NEW).
+     * <ul>
+     *   <li>confiance ≥ seuil et catégorie connue : catégorie + service de la catégorie, source AI,
+     *       score, NEW → CLASSIFIED historisé (auteur SYSTEM) ;</li>
+     *   <li>sinon (confiance basse, catégorie inconnue, panne) : la réclamation reste NEW, avec un
+     *       commentaire INTERNE qui explique pourquoi (jamais visible du client).</li>
+     * </ul>
+     * La prédiction est enregistrée dans tous les cas, sauf si l'IA est désactivée.
+     */
+    public void applyAiResult(Long claimId, AiCallResult result) {
+        if (result instanceof AiCallResult.Disabled) {
+            return;
+        }
+        Claim claim = claims.findById(claimId).orElseThrow(() -> ApiException.claimNotFound(claimId));
+        if (claim.getStatus() != ClaimStatus.NEW || predictions.findByClaimId(claimId).isPresent()) {
+            return; // déjà traitée entre-temps : on ne touche à rien
+        }
+        CurrentUser system = CurrentUser.SYSTEM;
+        if (result instanceof AiCallResult.Failed failed) {
+            predictions.save(AiPrediction.unavailable(claim, failed.reason().name()));
+            internalNote(claim, "Classement automatique indisponible (" + failed.reason().label()
+                    + ") : réclamation à classer manuellement.");
+            return;
+        }
+        ClassifyResponse response = ((AiCallResult.Answered) result).response();
+        Optional<Category> category = response.category() == null
+                ? Optional.empty()
+                : categories.findFirstByNameIgnoreCase(response.category().trim());
+        if (response.category() != null && category.isEmpty()) {
+            predictions.save(AiPrediction.answered(claim, AiPredictionOutcome.UNKNOWN_CATEGORY,
+                    truncate(response.category()), truncate(response.service()), response.confidence(),
+                    truncate(response.modelVersion())));
+            internalNote(claim, "Classement automatique non appliqué : la catégorie proposée « "
+                    + truncate(response.category()) + " » n'existe pas dans le référentiel. À classer manuellement.");
+            return;
+        }
+        if (category.isEmpty() || !Boolean.TRUE.equals(response.thresholdReached())) {
+            predictions.save(AiPrediction.answered(claim, AiPredictionOutcome.LOW_CONFIDENCE,
+                    category.map(Category::getName).orElse(null),
+                    category.map(c -> c.getService().getName()).orElse(null),
+                    response.confidence(), truncate(response.modelVersion())));
+            internalNote(claim, category.isEmpty()
+                    ? "Classement automatique non appliqué : texte inexploitable. À classer manuellement."
+                    : "Classement automatique non appliqué : confiance insuffisante ("
+                    + category.get().getName() + ", " + percent(response.confidence())
+                    + (response.threshold() == null ? "" : " < " + percent(response.threshold()))
+                    + "). À classer manuellement.");
+            return;
+        }
+        Category chosen = category.get();
+        ProcessingService service = chosen.getService();
+        claim.classify(chosen, service, ClassificationSource.AI, response.confidence());
+        predictions.save(AiPrediction.answered(claim, AiPredictionOutcome.APPLIED, chosen.getName(),
+                service.getName(), response.confidence(), truncate(response.modelVersion())));
+        transition(claim, ClaimStatus.CLASSIFIED, system,
+                "Classement automatique : " + chosen.getName() + " (" + percent(response.confidence()) + ")");
+        events.dispatchAfterCommit(ClaimEvent.of(ClaimEventType.AUTO_CLASSIFIED, claim, ClaimStatus.NEW, system,
+                String.format(Locale.ROOT, "confidence=%.2f;model=%s", response.confidence(),
+                        truncate(response.modelVersion()))));
+        log.info("Réclamation {} classée automatiquement : {} ({})", claim.getId(), chosen.getName(),
+                percent(response.confidence()));
     }
 
     // --- Affectation et réaffectation (BF15, BF23) -----------------------------------------------
@@ -266,10 +396,42 @@ public class ClaimService {
         List<Comment> visibleComments = ClaimAccessPolicy.canSeeInternalComments(user)
                 ? comments.findByClaimIdOrderByCreatedAtAscIdAsc(claim.getId())
                 : comments.findByClaimIdAndInternalFalseOrderByCreatedAtAscIdAsc(claim.getId());
+        AiPrediction prediction = ClaimAccessPolicy.canSeeInternalComments(user)
+                ? predictions.findByClaimId(claim.getId()).orElse(null)
+                : null; // le client ne voit pas le détail de la prédiction
         return DtoMapper.detail(claim,
                 history.findByClaimIdOrderByChangedAtAscIdAsc(claim.getId()),
                 visibleComments,
-                attachments.findByClaimIdOrderByUploadedAtAscIdAsc(claim.getId()));
+                attachments.findByClaimIdOrderByUploadedAtAscIdAsc(claim.getId()),
+                prediction);
+    }
+
+    private void internalNote(Claim claim, String text) {
+        comments.save(new Comment(claim, CurrentUser.SYSTEM.id(), CurrentUser.SYSTEM.role(), text, true));
+        log.info("Réclamation {} laissée en classement manuel", claim.getId());
+    }
+
+    private static boolean sameAsPrediction(AiPrediction prediction, Category category, ProcessingService service) {
+        return category.getName().equalsIgnoreCase(String.valueOf(prediction.getPredictedCategory()))
+                && service.getName().equalsIgnoreCase(String.valueOf(prediction.getPredictedService()));
+    }
+
+    /**
+     * 0.9234 → « 92 % ». Tronqué (pas arrondi) pour ne jamais afficher plus que la valeur réelle :
+     * une confiance de 0.5695 sous un seuil de 0.57 donne « 56 % < 57 % », pas « 57 % < 57 % ».
+     * La marge 1e-9 corrige l'imprécision des flottants (0.57 × 100 = 56.999…).
+     */
+    static String percent(Double value) {
+        return value == null ? "?" : (long) Math.floor(value * 100 + 1e-9) + " %";
+    }
+
+    /** Valeurs reçues du service IA : bornées à la taille des colonnes. */
+    private static String truncate(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 100 ? trimmed : trimmed.substring(0, 100);
     }
 
     private static String nameOf(Category category) {

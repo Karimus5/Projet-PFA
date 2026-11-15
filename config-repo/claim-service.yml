@@ -39,3 +39,35 @@ claims:
     storage-dir: ${CLAIMS_STORAGE_DIR:${user.home}/reclamations-data/attachments}
     max-file-size: 5MB
     max-files-per-claim: 5
+
+# --- Classement automatique par le service IA (BF16-BF19, étape 7a) ---------------------------
+# Appel REST (OpenFeign) de ai-classifier-service à la création d'une réclamation, APRÈS son
+# enregistrement. Pas de découverte Eureka : URL fixe (le service IA écoute sur 127.0.0.1).
+# Toute panne (délai, erreur, service arrêté, disjoncteur ouvert) laisse la réclamation en NEW
+# (classement manuel) : la création n'échoue jamais à cause de l'IA.
+ai-classifier:
+  enabled: true
+  url: ${AI_SERVICE_URL:http://localhost:8000}
+  # Clé partagée avec le service IA (en-tête X-API-Key). Vide → classement automatique désactivé.
+  api-key: ${AI_SERVICE_API_KEY:}
+  # 2 s au total au maximum (exigence : classification en moins de 2 s), aucune nouvelle tentative.
+  connect-timeout: 500ms
+  read-timeout: 1500ms
+
+# Disjoncteur devant le service IA : sur les 5 derniers appels (au moins 3), si 50 % ou plus ont
+# échoué, il s'OUVRE : les créations suivantes ne tentent plus l'appel (repli immédiat) pendant
+# 30 s, puis un seul appel d'essai est autorisé (s'il réussit, le disjoncteur se referme).
+# Une confiance basse n'est pas un échec : seules les erreurs techniques comptent.
+resilience4j:
+  circuitbreaker:
+    instances:
+      ai-classifier:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 3
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 1
+        automatic-transition-from-open-to-half-open-enabled: false
+        # L'état du disjoncteur ne doit pas rendre claim-service « DOWN » dans /actuator/health.
+        register-health-indicator: false

@@ -7,8 +7,8 @@ Cahier des charges : [`docs/cahier-des-charges.pdf`](docs/cahier-des-charges.pdf
 `auth-service` (8081, PostgreSQL `auth_db`), `claim-service` (8082, PostgreSQL `claim_db` :
 réclamations, statuts, commentaires, affectations, pièces jointes — classement manuel, l'IA viendra
 plus tard) et le **frontend React** (5173 : connexion, inscription, profil, gestion des utilisateurs).
-Module IA (`ai-classifier-service/`) : jeu de données, modèle entraîné et rapport d'évaluation
-prêts ; l'API FastAPI et l'intégration au claim-service viendront à l'étape suivante.
+Module IA (`ai-classifier-service/`, FastAPI, port 8000, localhost uniquement) : classement
+automatique des nouvelles réclamations par claim-service, avec repli vers le classement manuel.
 
 **Mode d'exécution :** l'application s'exécute en local. Docker Compose ne lance que les bases de
 données et le broker de messages ; les services tournent directement avec Maven (et plus tard
@@ -45,10 +45,18 @@ notepad .env
 | `JWT_EXPIRATION`  | durée de validité des jetons (`1h` par défaut)                        |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | compte ADMIN créé au 1er démarrage d'auth-service s'il n'existe aucun admin |
 | `CLAIMS_STORAGE_DIR` | facultatif : dossier des pièces jointes de claim-service, **hors du dépôt** (défaut `<dossier utilisateur>/reclamations-data/attachments` ; écrire le chemin avec des `/`) |
+| `AI_SERVICE_API_KEY` | clé partagée service IA ↔ claim-service (≥ 16 caractères). **Obligatoire pour le service IA** (refuse de démarrer sans) ; absente côté claim-service → classement automatique désactivé |
+| `AI_SERVICE_URL` | facultatif : URL du service IA vue par claim-service (défaut `http://localhost:8000`) |
+| `AI_SERVICE_HOST`, `AI_SERVICE_PORT` | facultatifs : écoute du service IA (défaut `127.0.0.1` et `8000`) |
 
 Générer un `JWT_SECRET` aléatoire (à coller dans `.env`) :
 ```powershell
 [Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
+```
+Ajouter `AI_SERVICE_API_KEY` à `.env` sans l'afficher (depuis la racine du projet, une seule fois) :
+```powershell
+$k = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
+Add-Content -Path .env -Value "`r`nAI_SERVICE_API_KEY=$k" -Encoding ascii; Remove-Variable k   # `r`n : au cas où .env ne finit pas par un saut de ligne
 ```
 Format du fichier : `CLE=valeur`, sans guillemets ni espaces autour de `=`, sans `\`.
 
@@ -104,11 +112,22 @@ Vérifier : http://localhost:8082/actuator/health → `{"status":"UP"}` (vérifi
 uniquement : en dehors de ce test, on passe toujours par la gateway). Flyway crée le schéma et les
 catégories / services d'exemple ; `CLAIM-SERVICE` apparaît dans Eureka en ~30 s.
 
+**Terminal 6 — Service IA** (`AI_SERVICE_API_KEY` requise dans `.env` ; modèle déjà entraîné et
+versionné). Peut être lancé avant ou après claim-service : s'il est absent, les réclamations restent
+simplement en `NEW` (classement manuel).
+```powershell
+cd ai-classifier-service
+.\venv\Scripts\python.exe -m api      # installation du venv : voir « Module IA » plus bas
+```
+Vérifier : http://127.0.0.1:8000/health → `{"status":"UP","modelVersion":"1.0.0",...}` ;
+documentation OpenAPI : http://127.0.0.1:8000/docs. Le service n'écoute que sur `127.0.0.1` et
+n'est pas routé par la gateway.
+
 Depuis IntelliJ : lancer `ConfigServerApplication`, `DiscoveryServiceApplication`,
 `ApiGatewayApplication`, `AuthServiceApplication` puis `ClaimServiceApplication` (répertoire de
 travail = racine du projet).
 
-**Terminal 6 — Frontend React** (une fois la gateway et auth-service démarrés)
+**Terminal 7 — Frontend React** (une fois la gateway et auth-service démarrés)
 ```powershell
 cd frontend
 npm install        # la première fois seulement
@@ -319,13 +338,14 @@ Tous les chemins sont sous `/api/claims`. claim-service identifie l'appelant par
 
 | Méthode | Chemin | Accès | Description |
 |---------|--------|-------|-------------|
-| POST  | `/api/claims` | CLIENT | soumettre `{title, description}` → 201, statut `NEW` (BF6) |
+| POST  | `/api/claims` | CLIENT | soumettre `{title, description}` → 201, statut `CLASSIFIED` (classement IA) ou `NEW` (BF6, BF16-BF19) |
 | GET   | `/api/claims?status=&page=0&size=20` | tous | réclamations **visibles**, plus récentes d'abord, `size` ≤ 100 (BF7, BF11) |
 | GET   | `/api/claims/{id}` | tous | détail + historique + commentaires + pièces jointes (BF8) |
 | POST  | `/api/claims/{id}/complements` | CLIENT propriétaire | `{text}` ajouté à la description, réclamation ouverte (BF9) |
 | POST  | `/api/claims/{id}/comments` | tous | `{content, internal?}` ; `internal: true` réservé aux agents/admins (BF13) |
 | PATCH | `/api/claims/{id}/status` | selon transition | `{status, note?}` (BF12) |
-| PUT   | `/api/claims/{id}/classification` | ADMIN (NEW) ; AGENT/ADMIN (correction) | `{categoryId, serviceId?}` (BF14) |
+| PUT   | `/api/claims/{id}/classification` | ADMIN (NEW) ; AGENT/ADMIN (correction) | `{categoryId, serviceId?}` (BF14) ; sur une classification IA, enregistre la correction |
+| POST  | `/api/claims/{id}/classification/confirmation` | AGENT/ADMIN | confirme la catégorie et le service proposés par l'IA (BF14) ; 409 si déjà confirmée / corrigée ou classement non IA |
 | PUT   | `/api/claims/{id}/assignment` | AGENT/ADMIN | `{serviceId, agentId?}` (BF15, BF23) |
 | POST  | `/api/claims/{id}/attachments` | tous (si visible) | multipart, partie `files` (un ou plusieurs fichiers) |
 | GET   | `/api/claims/{id}/attachments/{attachmentId}` | tous (si visible) | téléchargement |
@@ -334,6 +354,8 @@ Tous les chemins sont sous `/api/claims`. claim-service identifie l'appelant par
 | POST/PUT/DELETE | `/api/claims/admin/categories[/{id}]` | ADMIN | `{name, description?, serviceId}` (BF22) |
 | POST  | `/api/claims/admin/services/{id}/agents` | ADMIN | rattacher un agent `{agentId, agentName}` |
 | DELETE | `/api/claims/admin/services/{id}/agents/{agentId}` | ADMIN | détacher un agent |
+| GET   | `/api/claims/admin/ai-stats` | ADMIN | chiffres du classement automatique (tableau de bord, BF25) |
+| GET   | `/api/claims/admin/ai-feedback/export` | ADMIN | export CSV des confirmations et corrections (BF20) |
 
 Données initiales : services et catégories **Facturation**, **Support technique**, **Livraison**
 (chaque catégorie est traitée par le service du même nom).
@@ -378,9 +400,49 @@ l'extension doit correspondre. 5 Mo maximum par fichier (400), 5 fichiers maximu
 (`<id réclamation>/<uuid>.<ext>`). Le nom d'origine, assaini, ne sert qu'à l'affichage et au
 téléchargement (`Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`).
 
+### Classement automatique (service IA) et repli
+À la création, **après** l'enregistrement en base (`NEW`), claim-service appelle
+`POST http://localhost:8000/classify` (OpenFeign, en-tête `X-API-Key`, connexion 500 ms + lecture
+1 500 ms, aucune nouvelle tentative), hors transaction :
+
+| Réponse du service IA | Résultat pour la réclamation |
+|---|---|
+| confiance ≥ seuil (0,57) et catégorie connue | `CLASSIFIED`, catégorie + service de la catégorie, source `AI`, `confidenceScore` ; historique `NEW → CLASSIFIED`, auteur `SYSTEM`, note « Classement automatique : Livraison (99 %) » |
+| confiance sous le seuil / texte inexploitable | reste `NEW` + commentaire **interne** « confiance insuffisante (…) » |
+| catégorie absente du référentiel | reste `NEW` + commentaire interne |
+| erreur 4xx/5xx, réponse invalide, délai dépassé, service arrêté | reste `NEW` + commentaire interne (motif) |
+| disjoncteur ouvert | reste `NEW` **sans appel** (repli immédiat) + commentaire interne |
+
+La création ne peut pas échouer à cause de l'IA ; le client ne voit ni les commentaires internes ni
+le détail de la prédiction. `SYSTEM` est un rôle interne (id 0) : refusé dans `X-User-Role`.
+
+**Disjoncteur** (Resilience4j, `config-repo/claim-service.yml`, `resilience4j.circuitbreaker.instances.ai-classifier`) :
+sur les 5 derniers appels (au moins 3), ≥ 50 % d'échecs → ouvert 30 s, puis un appel d'essai.
+Une confiance basse n'est pas un échec. Désactiver l'IA : `ai-classifier.enabled: false`.
+
+**Prédiction et retour d'information** : table `ai_predictions` (une par réclamation : catégorie
+et service proposés, confiance, version du modèle, résultat `APPLIED` / `LOW_CONFIDENCE` /
+`UNKNOWN_CATEGORY` / `UNAVAILABLE`, puis décision `CONFIRMED` / `CORRECTED`, catégorie et service
+finaux, auteur, date). Visible des agents et admins dans `aiPrediction` du détail (`null` pour un
+client). Une correction (`PUT /classification`) ou une confirmation laisse un commentaire interne.
+
+**Export CSV** (`GET /api/claims/admin/ai-feedback/export`, ADMIN) : UTF-8, virgules, champs entre
+guillemets, une ligne par confirmation / correction :
+`claim_id,title,description,predicted_category,predicted_service,confidence,final_category,final_service,decision,model_version,decided_by_role,decided_at`.
+Ni e-mail ni identifiant de client ou d'agent. Un texte commençant par `= + - @` est préfixé d'une
+apostrophe (protection contre l'injection de formules dans un tableur). Pour réentraîner :
+`title`, `description` et `final_category` correspondent aux colonnes `title`, `description`,
+`category` de `ai-classifier-service/data/claims.csv`.
+
+**Chiffres** (`GET /api/claims/admin/ai-stats`) : `predictions`, `autoClassified`, `confirmed`,
+`corrected`, `awaitingReview`, `sentToManual` (= `lowConfidence` + `unknownCategory` +
+`unavailable`), `autoClassificationRate`, `correctionRate` (corrigées / (confirmées + corrigées)).
+
 ### Événements (préparation de notification-service et stats-service)
 `ClaimEventPublisher` est publié **après validation de la transaction** : `CREATED`,
-`STATUS_CHANGED`, `CLASSIFICATION_CHANGED`, `ASSIGNED`, `PUBLIC_COMMENT_ADDED`. Pour l'instant,
+`STATUS_CHANGED`, `CLASSIFICATION_CHANGED`, `ASSIGNED`, `PUBLIC_COMMENT_ADDED`, `AUTO_CLASSIFIED`
+(acteur `SYSTEM`, `detail` = confiance et version du modèle) et `CLASSIFICATION_FEEDBACK`
+(`detail` = `CONFIRMED` ou `CORRECTED`). Aucun texte de réclamation dans les événements. Pour l'instant,
 `LoggingClaimEventPublisher` se contente de journaliser (`Événement … : réclamation …`). Une
 implémentation RabbitMQ annotée `@Primary` la remplacera sans modifier `ClaimService`.
 
@@ -394,7 +456,11 @@ implémentation RabbitMQ annotée `@Primary` la remplacera sans modifier `ClaimS
   Rien ne vérifie que ce compte existe, est actif ou a le rôle AGENT, et un changement de nom
   dans auth-service n'est pas répercuté. Détacher un agent d'un service ne lui retire pas les
   réclamations qui lui sont déjà affectées.
-- Sans IA, les nouvelles réclamations attendent le tri manuel de l'admin (`NEW → CLASSIFIED`).
+- Les réclamations non classées par l'IA attendent le tri manuel de l'admin (`NEW → CLASSIFIED`).
+- Le frontend n'affiche pas encore de bouton « Confirmer » ni l'export, et affiche l'auteur
+  `SYSTEM` tel quel dans l'historique (libellé à ajouter à l'étape frontend).
+- Seules les décisions sur des classements **appliqués** par l'IA alimentent l'export : un tri
+  manuel après une confiance trop basse n'y figure pas (piste d'amélioration pour BF20).
 
 ### Script de test complet (`scripts/test-claim-service.ps1`)
 Teste le claim-service via la gateway en trois blocs (réclamations et statuts, commentaires et
@@ -486,7 +552,9 @@ curl.exe -s -H "Authorization: Bearer $CA" -F "files=@$env:TEMP\faux.pdf" "$G/ap
 Classe une réclamation (titre + description, en français) dans une catégorie (Facturation, Support
 technique, Livraison) ; le service se déduit de la catégorie (BF16, BF17). Fournit un score de
 confiance et un seuil en dessous duquel la réclamation part en classement manuel (BF18, BF19).
-**Étape actuelle : données et modèle uniquement** (pas encore d'API ni d'appel depuis claim-service).
+API FastAPI (étape 7a) : `POST /classify` (en-tête `X-API-Key`) et `GET /health`, port **8000**,
+`127.0.0.1` uniquement, non routée par la gateway ; appelée par claim-service (voir « Classement
+automatique » plus haut). Lancement : `.\venv\Scripts\python.exe -m api`.
 
 Résultats (jeu de test, utilisé une seule fois) et analyse détaillée :
 [`ai-classifier-service/reports/evaluation.md`](ai-classifier-service/reports/evaluation.md).
@@ -507,7 +575,8 @@ venv (sous PowerShell 5.1, `Activate.ps1` peut être bloqué par la stratégie d
 .\venv\Scripts\python.exe -m classifier.evaluate   # évaluation finale sur le test -> reports/evaluation.md
 .\venv\Scripts\python.exe predict.py "Mon colis n'est jamais arrivé"
 .\venv\Scripts\python.exe predict.py --title "Double prélèvement" --description "Débité deux fois" --json
-.\venv\Scripts\python.exe -m pytest                # tests (jeu de données, découpage, prédiction)
+.\venv\Scripts\python.exe -m pytest                # tests (jeu de données, découpage, prédiction, API)
+.\venv\Scripts\python.exe -m api                   # API sur http://127.0.0.1:8000 (AI_SERVICE_API_KEY requise)
 ```
 Le modèle (`model/classifier.joblib`, ~1,1 Mo), ses métadonnées (`model/metadata.json`) et le
 rapport sont versionnés : `predict.py` et les tests fonctionnent sans réentraîner. Tout est
@@ -525,6 +594,7 @@ ai-classifier-service/
                          train, evaluate, predictor (chargement + classification, réutilisable par FastAPI)
   model/                 classifier.joblib (modèle + métadonnées), metadata.json
   reports/               evaluation.md, validation_results.json, figures/ (matrices de confusion, courbe)
+  api/                   API FastAPI : settings (.env), main (POST /classify, GET /health), __main__ (uvicorn)
   predict.py             classification en ligne de commande
   tests/                 pytest
 ```
@@ -571,7 +641,7 @@ api-gateway/          Spring Cloud Gateway — port 8080
 auth-service/         comptes, JWT, rôles — port 8081 (base auth_db)
 claim-service/        réclamations, statuts, commentaires, affectations, pièces jointes — port 8082 (base claim_db)
 frontend/             React + Vite + Tailwind — port 5173
-ai-classifier-service/ module IA (Python) : jeu de données, modèle, évaluation (API FastAPI à venir, port 8000)
+ai-classifier-service/ module IA (Python) : jeu de données, modèle, évaluation, API FastAPI — port 8000
 docker/postgres/init/ création des bases PostgreSQL (une par service)
 docs/                 cahier des charges
 docker-compose.yml    PostgreSQL

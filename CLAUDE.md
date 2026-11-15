@@ -16,13 +16,13 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | discovery-service      | Eureka Server              | 8761  | —              | fait     |
 | api-gateway            | Spring Cloud Gateway (WebFlux) | 8080 | —          | fait (JWT vérifié) |
 | auth-service           | Spring Boot + Security/JWT | 8081  | auth_db        | fait     |
-| claim-service          | Spring Boot (OpenFeign plus tard) | 8082 | claim_db | fait (sans IA) |
+| claim-service          | Spring Boot + OpenFeign + Resilience4j | 8082 | claim_db | fait (avec IA) |
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
-| ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | modèle fait (API à faire) |
+| ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | fait (API, 127.0.0.1) |
 | frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth, admin, réclamations) |
 
-Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-service avec timeout + repli ;
+Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service → ai-classifier-service avec timeout + disjoncteur + repli ;
 événements asynchrones RabbitMQ pour notifications et statistiques.
 
 ## API Gateway (point d'entrée unique, seul service appelé par le frontend)
@@ -102,7 +102,7 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Tests : `src/test/resources/application.yml` (H2 mode PostgreSQL, pas de Config Server/Eureka/.env),
   tests unitaires Mockito (`service/`) et intégration MockMvc (`web/AuthApiIntegrationTest`).
 
-## claim-service (port 8082, base claim_db) — étape 5b, SANS IA
+## claim-service (port 8082, base claim_db) — étape 5b, puis classement IA (7a)
 - Packages : `domain` (entités + dépôts : `Claim`, `ClaimStatus`, `ClaimWorkflow`, `Category`,
   `ProcessingService` = « Service » du diagramme (nom évitant le conflit avec `@Service`),
   `ServiceAgent`, `Comment`, `StatusHistory`, `Attachment`), `access` (`ClaimAccessPolicy` logique
@@ -139,10 +139,38 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   `Claim` a un `@Version` (conflit concurrent → 409).
 - Endpoints : voir README « API des réclamations ». Tests : `ClaimWorkflowTest`,
   `ClaimAccessPolicyTest`, `FileValidationTest`, `ClaimApiIntegrationTest` (MockMvc, en-têtes simulés).
-- À venir (étape IA) : classification automatique à la création (source AI + score, repli MANUAL),
-  classe Prediction (BF18, BF20).
+- **Classement automatique (étape 7a, BF16-BF20)**, package `ai` : `AiClassifierClient` (OpenFeign,
+  `url = ${ai-classifier.url}`), `AiClassifierFeignConfig` (SANS @Configuration : délais
+  `connect-timeout` 500 ms + `read-timeout` 1 500 ms, `Retryer.NEVER_RETRY`, en-tête `X-API-Key`),
+  `AiClassificationGateway` (seul point d'appel ; disjoncteur Resilience4j `ai-classifier` ; ne lève
+  jamais : `AiCallResult` Disabled / Answered / Failed(`AiFailureReason`)), `AiClassifierProperties`.
+  Clé absente ou `ai-classifier.enabled: false` → aucun appel.
+- `ClaimIntakeService.submit` (SANS transaction) : `ClaimService.create` (NEW, commit) → appel IA →
+  `ClaimService.applyAiResult` (2e transaction). Exception aux étapes 2-3 → reste NEW (log) : la
+  création n'échoue jamais à cause de l'IA. APPLIED : NEW→CLASSIFIED par `CurrentUser.SYSTEM`
+  (rôle interne `UserRole.SYSTEM`, id 0, autorisé pour NEW→CLASSIFIED dans `ClaimWorkflow`, refusé
+  dans X-User-Role, ne voit rien) ; sinon commentaire INTERNE de SYSTEM (motif). Confiance affichée
+  TRONQUÉE (`percent`) pour éviter « 57 % < 57 % ».
+- Table `ai_predictions` (Flyway V3, entité `AiPrediction`, une par réclamation, noms copiés sans FK) :
+  outcome APPLIED / LOW_CONFIDENCE / UNKNOWN_CATEGORY / UNAVAILABLE (+ failure_reason), puis
+  decision CONFIRMED / CORRECTED + final_* + decided_by_*. `ClaimDetail.aiPrediction` : staff
+  seulement (null pour le client).
+- BF14 : `POST /{id}/classification/confirmation` (staff, prédiction APPLIED non encore décidée, source
+  AI, statut CLASSIFIED/ASSIGNED/IN_PROGRESS, sinon 409) ; `PUT /{id}/classification` sur une
+  prédiction APPLIED enregistre CORRECTED (ou CONFIRMED si identique), décision la plus récente.
+- BF20/BF25 : `AiAdminController` + `AiFeedbackService` : `GET /api/claims/admin/ai-stats`,
+  `GET /api/claims/admin/ai-feedback/export` (CSV, colonnes dans `AiFeedbackService.CSV_COLUMNS`, sans
+  e-mail ni id client/agent, anti-injection de formules). Admin vérifié aussi dans le service.
+- Événements ajoutés : `AUTO_CLASSIFIED`, `CLASSIFICATION_FEEDBACK` ; `ClaimEvent.detail` (court, non
+  sensible).
+- Tests : `AiClassificationIntegrationTest` (WireMock : haute/basse confiance, catégorie inconnue,
+  500, 401, réponse invalide, délai, disjoncteur, confirmation, correction, export, stats, SYSTEM),
+  `AiClassifierStoppedTest` (port fermé, disjoncteur de production), `CsvFieldTest`. Le .yml de test
+  met `ai-classifier.enabled: false` ; H2 partagé entre contextes → ids de test distincts (50 000+, 90 000+).
+- Limites : frontend sans bouton Confirmer ni libellé « Système » (affiche SYSTEM) ; tri manuel
+  après LOW_CONFIDENCE non exporté ; migration V3 testée sur H2 seulement (SQL identique à V1).
 
-## ai-classifier-service (étape 6 : données + modèle, PAS encore d'API)
+## ai-classifier-service (étape 6 : données + modèle ; étape 7a : API)
 - Python **3.12** (seul installé : 3.12.10, lanceur `py -3.12`), venv `ai-classifier-service/venv`
   (ignoré par git ; attention, dans OneDrive il est synchronisé). `requirements.txt` = versions
   exactes (scikit-learn 1.9.1, numpy 2.5.5, pandas 3.1.1, joblib 1.6.0, matplotlib 3.11.2, pytest 9.2.0).
@@ -170,8 +198,22 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   (sans effet utile ; corriger = réentraîner = réutiliser le test).
 - Modèle versionné (`model/classifier.joblib` ~1,1 Mo + `metadata.json`) : tests et predict.py
   fonctionnent sans réentraîner. Pas d'embeddings (torch ≈ 1 Go, refusé comme non raisonnable).
-- Limites : pas de notebook d'évaluation (livrable du §11) ; à faire à l'étape API : FastAPI port
-  8000, Eureka ?, OpenFeign + timeout + repli dans claim-service, classe Prediction (BF18, BF20).
+- Limite : pas de notebook d'évaluation (livrable du §11).
+
+### API du service IA (étape 7a) — package `api/`
+- `python -m api` (depuis le dossier, venv) : uvicorn, `AI_SERVICE_HOST` (défaut **127.0.0.1**),
+  `AI_SERVICE_PORT` (défaut **8000** ; 8083 reste réservé à notification-service, décision utilisateur).
+- `api/settings.py` : lit l'environnement puis `../.env` et `./.env` (python-dotenv, sans écraser) ;
+  **refuse de démarrer** si `AI_SERVICE_API_KEY` < 16 caractères.
+- `api/main.py` : `create_app(settings, classifier)` (fabrique, injectable en test) ; modèle chargé
+  UNE fois (lifespan) via `ClaimClassifier` (pas de duplication). `POST /classify`
+  `{title?, description}` (≤ 150 / ≤ 10 000, sinon 422) exige `X-API-Key` (compare_digest, 401
+  sinon) → `{category, service, confidence, threshold, thresholdReached, reason, modelVersion,
+  processingTimeMs, probabilities}` (camelCase ; texte vide → category null). `GET /health` public
+  `{status, modelVersion, modelName, threshold}`. `/docs` = OpenAPI. Texte jamais journalisé.
+- **Pas d'Eureka** (décision utilisateur) : claim-service utilise une URL fixe (`ai-classifier.url`).
+  Aucune route gateway vers ce service (ne pas en ajouter).
+- Tests : `tests/test_api.py` (TestClient, httpx2 — `httpx` est déprécié par Starlette 1.10).
 
 ## Frontend (`frontend/`, port 5173)
 - Vite 8, React 19, react-router 7.18 (pas 8 : exige Node ≥ 22.22, la machine a 22.20), Tailwind CSS 4
@@ -241,7 +283,9 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
   Les variables d'environnement du système restent prioritaires.
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (base par défaut de l'image), `POSTGRES_PORT`,
   `POSTGRES_HOST` (facultatif, défaut localhost), `JWT_SECRET`, `JWT_EXPIRATION`, `ADMIN_EMAIL`,
-  `ADMIN_PASSWORD`, `ADMIN_NAME`, `CLAIMS_STORAGE_DIR` (facultatif, pièces jointes, hors dépôt).
+  `ADMIN_PASSWORD`, `ADMIN_NAME`, `CLAIMS_STORAGE_DIR` (facultatif, pièces jointes, hors dépôt),
+  `AI_SERVICE_API_KEY` (clé partagée service IA ↔ claim-service, ≥ 16 car.), `AI_SERVICE_URL`,
+  `AI_SERVICE_HOST`, `AI_SERVICE_PORT` (facultatifs).
 - Ne jamais demander ces valeurs dans le chat ni les écrire dans `.env` : l'utilisateur remplit `.env`.
 
 ## Stack et versions
@@ -257,7 +301,9 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - Livrable : « application exécutable en local, avec un guide de lancement (README) » → tenir
   `README.md` à jour à chaque nouveau service (commande de lancement, port, URL de vérification).
 - Ordre de démarrage : `docker compose up -d postgres` → config-server → discovery-service →
-  api-gateway → auth-service → claim-service → autres services → frontend (`npm run dev`).
+  api-gateway → auth-service → claim-service → service IA (`cd ai-classifier-service;
+  .\venv\Scripts\python.exe -m api`, ordre indifférent : absent = classement manuel) → autres
+  services → frontend (`npm run dev`).
 - Une base PostgreSQL par service, créée par `docker/postgres/init/01-create-databases.sql` (une
   ligne par service ; script exécuté seulement si le volume est vide). Volume existant : rejouer le
   script, idempotent : `docker exec reclamations-postgres sh -c 'psql -v ON_ERROR_STOP=1 -U $POSTGRES_USER
@@ -307,7 +353,8 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 3. ✅ claim-service sans IA (BF6–BF15, BF22, BF23) ; notification-service (BF10), stats-service
    (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service : ✅ 6 (jeu de données, modèle, évaluation — 94,9 % accuracy / F1 macro
-   sur le test) ; à venir : API FastAPI + intégration claim-service (BF16–BF20), notebook d'évaluation.
+   sur le test) ; ✅ 7a (API FastAPI + intégration claim-service, BF14, BF16–BF20, backend) ; à venir :
+   7b frontend (bouton Confirmer, libellé Système, export), notebook d'évaluation.
 5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; ✅ 5c (pages
    réclamations client/agent/admin, référentiels) ; à venir : tableau de bord (stats-service).
 6. Tests d'intégration, charge, évaluation du modèle.

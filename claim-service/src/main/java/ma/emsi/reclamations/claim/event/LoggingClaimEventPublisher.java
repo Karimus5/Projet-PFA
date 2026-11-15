@@ -15,8 +15,9 @@ public class LoggingClaimEventPublisher implements ClaimEventPublisher {
 
     @Override
     public void publish(ClaimEvent event) {
-        log.info("Événement {} : réclamation {} ({} -> {}), service {}, agent {}, par {} {}",
+        log.info("Événement {} : réclamation {} ({} -> {}), service {}, agent {}, par {} {}{}",
                 event.type(), event.claimId(), event.previousStatus(), event.status(),
-                event.serviceId(), event.assignedAgentId(), event.actorRole(), event.actorId());
+                event.serviceId(), event.assignedAgentId(), event.actorRole(), event.actorId(),
+                event.detail() == null ? "" : " [" + event.detail() + "]");
     }
 }

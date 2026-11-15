@@ -1,6 +1,7 @@
 package ma.emsi.reclamations.claim.service;
 
 import java.util.List;
+import ma.emsi.reclamations.claim.domain.AiPrediction;
 import ma.emsi.reclamations.claim.domain.Attachment;
 import ma.emsi.reclamations.claim.domain.Category;
 import ma.emsi.reclamations.claim.domain.Claim;
@@ -9,6 +10,7 @@ import ma.emsi.reclamations.claim.domain.ProcessingService;
 import ma.emsi.reclamations.claim.domain.ServiceAgent;
 import ma.emsi.reclamations.claim.domain.StatusHistory;
 import ma.emsi.reclamations.claim.web.dto.Dtos.AgentRef;
+import ma.emsi.reclamations.claim.web.dto.Dtos.AiPredictionResponse;
 import ma.emsi.reclamations.claim.web.dto.Dtos.AttachmentResponse;
 import ma.emsi.reclamations.claim.web.dto.Dtos.CategoryResponse;
 import ma.emsi.reclamations.claim.web.dto.Dtos.ClaimDetail;
@@ -30,14 +32,22 @@ final class DtoMapper {
                 c.getClassificationSource(), c.getConfidenceScore(), c.getCreatedAt(), c.getUpdatedAt());
     }
 
+    /** @param prediction prédiction IA, ou null (absente, ou appelant client : jamais exposée au client) */
     static ClaimDetail detail(Claim c, List<StatusHistory> history, List<Comment> comments,
-                              List<Attachment> attachments) {
+                              List<Attachment> attachments, AiPrediction prediction) {
         return new ClaimDetail(c.getId(), c.getTitle(), c.getDescription(), c.getStatus(),
                 c.getClientId(), c.getClientEmail(), category(c), service(c), agent(c),
                 c.getClassificationSource(), c.getConfidenceScore(), c.getCreatedAt(), c.getUpdatedAt(),
                 history.stream().map(DtoMapper::history).toList(),
                 comments.stream().map(DtoMapper::comment).toList(),
-                attachments.stream().map(DtoMapper::attachment).toList());
+                attachments.stream().map(DtoMapper::attachment).toList(),
+                prediction == null ? null : prediction(prediction));
+    }
+
+    static AiPredictionResponse prediction(AiPrediction p) {
+        return new AiPredictionResponse(p.getOutcome(), p.getFailureReason(), p.getPredictedCategory(),
+                p.getPredictedService(), p.getConfidence(), p.getModelVersion(), p.getCreatedAt(),
+                p.getDecision(), p.getFinalCategory(), p.getFinalService(), p.getDecidedByRole(), p.getDecidedAt());
     }
 
     static StatusHistoryResponse history(StatusHistory h) {

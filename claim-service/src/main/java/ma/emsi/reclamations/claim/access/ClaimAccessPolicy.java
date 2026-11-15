@@ -30,6 +30,7 @@ public final class ClaimAccessPolicy {
             case CLIENT -> Objects.equals(claim.getClientId(), user.id());
             case AGENT -> Objects.equals(claim.getAssignedAgentId(), user.id())
                     || (claim.getService() != null && agentServiceIds.contains(claim.getService().getId()));
+            case SYSTEM -> false; // rôle interne : ne consulte rien par l'API
         };
     }
 

@@ -6,6 +6,9 @@ package ma.emsi.reclamations.claim.security;
  */
 public record CurrentUser(Long id, String email, UserRole role) {
 
+    /** Auteur des actions automatiques (id 0, jamais attribué par auth-service). */
+    public static final CurrentUser SYSTEM = new CurrentUser(0L, null, UserRole.SYSTEM);
+
     public boolean isClient() {
         return role == UserRole.CLIENT;
     }

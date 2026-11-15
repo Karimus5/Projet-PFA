@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import ma.emsi.reclamations.claim.domain.AiFeedbackDecision;
+import ma.emsi.reclamations.claim.domain.AiPredictionOutcome;
 import ma.emsi.reclamations.claim.domain.ClaimStatus;
 import ma.emsi.reclamations.claim.domain.ClassificationSource;
 import ma.emsi.reclamations.claim.security.UserRole;
@@ -163,7 +165,42 @@ public final class Dtos {
             Instant updatedAt,
             List<StatusHistoryResponse> history,
             List<CommentResponse> comments,
-            List<AttachmentResponse> attachments) {
+            List<AttachmentResponse> attachments,
+            AiPredictionResponse aiPrediction) {
+    }
+
+    /**
+     * Prédiction du service IA et retour d'information (agents et admins uniquement ; null pour un
+     * client ou si aucune prédiction n'a été demandée).
+     */
+    public record AiPredictionResponse(
+            AiPredictionOutcome outcome,
+            String failureReason,
+            String predictedCategory,
+            String predictedService,
+            Double confidence,
+            String modelVersion,
+            Instant predictedAt,
+            AiFeedbackDecision decision,
+            String finalCategory,
+            String finalService,
+            UserRole decidedByRole,
+            Instant decidedAt) {
+    }
+
+    /** Chiffres du classement automatique (tableau de bord, BF25). */
+    public record AiStatsResponse(
+            long predictions,
+            long autoClassified,
+            long confirmed,
+            long corrected,
+            long awaitingReview,
+            long sentToManual,
+            long lowConfidence,
+            long unknownCategory,
+            long unavailable,
+            Double autoClassificationRate,
+            Double correctionRate) {
     }
 
     public record ServiceResponse(Long id, String name, String description) {

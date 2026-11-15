@@ -10,7 +10,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 /**
  * Identifie l'appelant à partir des en-têtes posés par l'api-gateway APRÈS vérification du JWT :
- * X-User-Id (sub), X-User-Email, X-User-Role (CLIENT | AGENT | ADMIN). La gateway supprime tout
+ * X-User-Id (sub), X-User-Email, X-User-Role (CLIENT | AGENT | ADMIN ; SYSTEM est refusé). La gateway supprime tout
  * en-tête X-User-* envoyé par le client avant d'ajouter les siens.
  *
  * <p><b>Limite assumée</b> : claim-service ne revalide pas le JWT et fait confiance à ces
@@ -44,7 +44,11 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
             if (userId <= 0) {
                 throw ApiException.unauthorized("Identité de l'appelant invalide");
             }
-            return new CurrentUser(userId, request.getHeader(USER_EMAIL), UserRole.valueOf(role.trim()));
+            UserRole userRole = UserRole.valueOf(role.trim());
+            if (!userRole.isUserRole()) { // SYSTEM est interne : jamais accepté depuis un en-tête
+                throw ApiException.unauthorized("Identité de l'appelant invalide");
+            }
+            return new CurrentUser(userId, request.getHeader(USER_EMAIL), userRole);
         } catch (IllegalArgumentException e) { // NumberFormatException incluse
             throw ApiException.unauthorized("Identité de l'appelant invalide");
         }

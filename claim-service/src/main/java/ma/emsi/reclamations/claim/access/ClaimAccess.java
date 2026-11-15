@@ -54,6 +54,7 @@ public class ClaimAccess {
                 case ADMIN -> {
                     // aucune restriction
                 }
+                case SYSTEM -> predicates.add(cb.disjunction()); // rôle interne : aucune réclamation
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));

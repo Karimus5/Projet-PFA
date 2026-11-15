@@ -8,6 +8,7 @@ import ma.emsi.reclamations.claim.domain.ClaimStatus;
 import ma.emsi.reclamations.claim.error.ApiException;
 import ma.emsi.reclamations.claim.security.CurrentUser;
 import ma.emsi.reclamations.claim.service.AttachmentService;
+import ma.emsi.reclamations.claim.service.ClaimIntakeService;
 import ma.emsi.reclamations.claim.service.ClaimService;
 import ma.emsi.reclamations.claim.web.dto.Dtos.AssignmentRequest;
 import ma.emsi.reclamations.claim.web.dto.Dtos.AttachmentResponse;
@@ -53,17 +54,23 @@ public class ClaimController {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final ClaimService claimService;
+    private final ClaimIntakeService intakeService;
     private final AttachmentService attachmentService;
 
-    public ClaimController(ClaimService claimService, AttachmentService attachmentService) {
+    public ClaimController(ClaimService claimService, ClaimIntakeService intakeService,
+                           AttachmentService attachmentService) {
         this.claimService = claimService;
+        this.intakeService = intakeService;
         this.attachmentService = attachmentService;
     }
 
-    /** BF6 — CLIENT uniquement. */
+    /**
+     * BF6 — CLIENT uniquement. La réclamation est enregistrée puis classée automatiquement si le
+     * service IA répond avec une confiance suffisante (CLASSIFIED) ; sinon elle reste NEW (BF19).
+     */
     @PostMapping
     ResponseEntity<ClaimDetail> create(CurrentUser user, @Valid @RequestBody CreateClaimRequest request) {
-        ClaimDetail created = claimService.create(user, request);
+        ClaimDetail created = intakeService.submit(user, request);
         return ResponseEntity.created(URI.create("/api/claims/" + created.id())).body(created);
     }
 
@@ -107,10 +114,19 @@ public class ClaimController {
         return claimService.changeStatus(user, id, request);
     }
 
-    /** Tri manuel NEW → CLASSIFIED (admin) ou correction de catégorie / service (BF14). */
+    /**
+     * Tri manuel NEW → CLASSIFIED (admin) ou correction de catégorie / service (BF14) ; sur une
+     * classification IA, enregistre le retour d'information (CORRECTED).
+     */
     @PutMapping("/{id:\\d+}/classification")
     ClaimDetail classify(CurrentUser user, @PathVariable Long id, @Valid @RequestBody ClassificationRequest request) {
         return claimService.classify(user, id, request);
+    }
+
+    /** BF14 — confirmation de la catégorie et du service proposés par l'IA (agent ou admin). */
+    @PostMapping("/{id:\\d+}/classification/confirmation")
+    ClaimDetail confirmClassification(CurrentUser user, @PathVariable Long id) {
+        return claimService.confirmClassification(user, id);
     }
 
     /** BF15 / BF23 — affectation ou réaffectation à un service et à un agent. */
