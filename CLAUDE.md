@@ -19,7 +19,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | claim-service          | Spring Boot (OpenFeign plus tard) | 8082 | claim_db | fait (sans IA) |
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
-| ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | à faire  |
+| ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | modèle fait (API à faire) |
 | frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth, admin, réclamations) |
 
 Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-service avec timeout + repli ;
@@ -142,6 +142,37 @@ Communication : REST synchrone (OpenFeign) claim-service → ai-classifier-servi
 - À venir (étape IA) : classification automatique à la création (source AI + score, repli MANUAL),
   classe Prediction (BF18, BF20).
 
+## ai-classifier-service (étape 6 : données + modèle, PAS encore d'API)
+- Python **3.12** (seul installé : 3.12.10, lanceur `py -3.12`), venv `ai-classifier-service/venv`
+  (ignoré par git ; attention, dans OneDrive il est synchronisé). `requirements.txt` = versions
+  exactes (scikit-learn 1.9.1, numpy 2.5.5, pandas 3.1.1, joblib 1.6.0, matplotlib 3.11.2, pytest 9.2.0).
+  Appeler `.\venv\Scripts\python.exe` directement (pas d'Activate.ps1 sous PowerShell 5.1).
+- Commandes (depuis le dossier) : `-m classifier.dataset` → `-m classifier.train` →
+  `-m classifier.evaluate` ; `predict.py "texte"` (`--title`, `--description`, `--json`) ; `-m pytest`.
+- Package `classifier/` : `config` (chemins, graine 42, catégories, seuils), `text` (normalisation,
+  DANS le pipeline sauvegardé : ne pas renommer/déplacer `normalize_batch` sans réentraîner),
+  `dataset` (fusion de `data/raw/*.csv`, dédoublonnage exact + quasi-doublons cosinus char ≥ 0,80
+  AVANT découpage, split stratifié 70/15/15), `models` (candidats + grilles), `confidence`
+  (courbe précision-couverture, choix du seuil), `metrics`, `train`, `evaluate`, `predictor`
+  (`ClaimClassifier.classify(title, description)` → `Prediction` ; à réutiliser par FastAPI).
+- Jeu de données : 525 réclamations rédigées par Claude (175/catégorie, 48 ambiguës = 9 %, colonne
+  `note`). Règle d'étiquetage des ambiguës : le service qui doit agir sur la cause principale.
+  Ajouter des données = éditer `data/raw/`, relancer les 3 commandes (le test change alors).
+- Modèle v1.0.0 : TF-IDF mots (1-2) + char_wb (2-5), **LinearSVC C=3 calibré** (sigmoïde, cv 5).
+  Comparé à LogReg (égalité val, départage CV) et ComplementNB ; base naïve. Confiance = proba
+  calibrée max ; **seuil 0,57** (plus petit seuil avec précision ≥ 95 % sur la validation).
+  Texte < 3 caractères alphanumériques → `category=None`, classement manuel.
+- Test (79, utilisé UNE fois) : accuracy 94,9 %, F1 macro 94,9 % (naïf 16,5 %) ; seuil → 94,9 %
+  de couverture, 97,3 % de précision ; ~16-25 ms par réclamation. Rapport `reports/evaluation.md`
+  (régénéré par evaluate ; limites du jeu rédigé en §8).
+- **Règle : ne jamais régler quoi que ce soit (grille, normalisation, seuil) d'après le test.**
+  Effet de bord connu et conservé : la réduction des répétitions transforme « 100 » en « 00 »
+  (sans effet utile ; corriger = réentraîner = réutiliser le test).
+- Modèle versionné (`model/classifier.joblib` ~1,1 Mo + `metadata.json`) : tests et predict.py
+  fonctionnent sans réentraîner. Pas d'embeddings (torch ≈ 1 Go, refusé comme non raisonnable).
+- Limites : pas de notebook d'évaluation (livrable du §11) ; à faire à l'étape API : FastAPI port
+  8000, Eureka ?, OpenFeign + timeout + repli dans claim-service, classe Prediction (BF18, BF20).
+
 ## Frontend (`frontend/`, port 5173)
 - Vite 8, React 19, react-router 7.18 (pas 8 : exige Node ≥ 22.22, la machine a 22.20), Tailwind CSS 4
   (plugin `@tailwindcss/vite`, classes réutilisables `btn-*`, `input`, `card` en `@utility` dans
@@ -262,6 +293,7 @@ api-gateway/         Spring Cloud Gateway (réactif) — routes, CORS, journalis
 auth-service/        comptes, login JWT, rôles, administration des utilisateurs
 claim-service/       réclamations, statuts, commentaires, affectations, pièces jointes
 frontend/            React (Vite, Tailwind) — npm, hors Maven
+ai-classifier-service/ Python (venv) : data/, classifier/, model/, reports/, predict.py, tests/
 docs/                cahier des charges et conception
 scripts/             scripts de test manuels (test-claim-service.ps1, PowerShell 5.1, via la gateway)
 docker/postgres/init scripts SQL de création des bases (une par service)
@@ -274,7 +306,8 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 2. ✅ api-gateway (routes, CORS, logs) ; ✅ auth-service (BF1–BF5, BF21) ; ✅ vérification JWT à la gateway.
 3. ✅ claim-service sans IA (BF6–BF15, BF22, BF23) ; notification-service (BF10), stats-service
    (BF24–BF26) + RabbitMQ.
-4. ai-classifier-service + jeu de données + notebook d'évaluation (BF16–BF20, objectif ≥ 85 % accuracy / F1 macro).
+4. ai-classifier-service : ✅ 6 (jeu de données, modèle, évaluation — 94,9 % accuracy / F1 macro
+   sur le test) ; à venir : API FastAPI + intégration claim-service (BF16–BF20), notebook d'évaluation.
 5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; ✅ 5c (pages
    réclamations client/agent/admin, référentiels) ; à venir : tableau de bord (stats-service).
 6. Tests d'intégration, charge, évaluation du modèle.

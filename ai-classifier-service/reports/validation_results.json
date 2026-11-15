@@ -1,0 +1,1282 @@
+{
+  "candidates": {
+    "baseline_majority": {
+      "name": "baseline_majority",
+      "description": "Base naïve : classe majoritaire de l'entraînement",
+      "validation": {
+        "accuracy": 0.3291139240506329,
+        "macro": {
+          "precision": 0.10970464135021096,
+          "recall": 0.3333333333333333,
+          "f1": 0.16507936507936508
+        },
+        "per_class": {
+          "Facturation": {
+            "precision": 0.3291139240506329,
+            "recall": 1.0,
+            "f1": 0.49523809523809526,
+            "support": 26
+          },
+          "Support technique": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 27
+          },
+          "Livraison": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 26
+          }
+        },
+        "confusion_matrix": [
+          [
+            26,
+            0,
+            0
+          ],
+          [
+            27,
+            0,
+            0
+          ],
+          [
+            26,
+            0,
+            0
+          ]
+        ],
+        "labels": [
+          "Facturation",
+          "Support technique",
+          "Livraison"
+        ]
+      }
+    },
+    "tfidf_logreg": {
+      "name": "tfidf_logreg",
+      "description": "TF-IDF mots + caractères, régression logistique",
+      "best_params": {
+        "clf__C": 16.0,
+        "features__chars__ngram_range": [
+          2,
+          5
+        ],
+        "features__words__ngram_range": [
+          1,
+          2
+        ]
+      },
+      "cv_f1_macro_mean": 0.9616791766351931,
+      "cv_f1_macro_std": 0.02197795207703764,
+      "grid_size": 20,
+      "tuning_seconds": 22.7,
+      "validation": {
+        "accuracy": 0.9493670886075949,
+        "macro": {
+          "precision": 0.9523809523809524,
+          "recall": 0.9491927825261158,
+          "f1": 0.9490643395405299
+        },
+        "per_class": {
+          "Facturation": {
+            "precision": 1.0,
+            "recall": 0.8846153846153846,
+            "f1": 0.9387755102040817,
+            "support": 26
+          },
+          "Support technique": {
+            "precision": 0.9285714285714286,
+            "recall": 0.9629629629629629,
+            "f1": 0.9454545454545454,
+            "support": 27
+          },
+          "Livraison": {
+            "precision": 0.9285714285714286,
+            "recall": 1.0,
+            "f1": 0.9629629629629629,
+            "support": 26
+          }
+        },
+        "confusion_matrix": [
+          [
+            23,
+            2,
+            1
+          ],
+          [
+            0,
+            26,
+            1
+          ],
+          [
+            0,
+            0,
+            26
+          ]
+        ],
+        "labels": [
+          "Facturation",
+          "Support technique",
+          "Livraison"
+        ]
+      }
+    },
+    "tfidf_linearsvc": {
+      "name": "tfidf_linearsvc",
+      "description": "TF-IDF mots + caractères, SVM linéaire (LinearSVC)",
+      "best_params": {
+        "clf__C": 3.0,
+        "features__chars__ngram_range": [
+          2,
+          5
+        ],
+        "features__words__ngram_range": [
+          1,
+          2
+        ]
+      },
+      "cv_f1_macro_mean": 0.9642883433788135,
+      "cv_f1_macro_std": 0.01878279604343411,
+      "grid_size": 24,
+      "tuning_seconds": 5.2,
+      "validation": {
+        "accuracy": 0.9493670886075949,
+        "macro": {
+          "precision": 0.9523809523809524,
+          "recall": 0.9491927825261158,
+          "f1": 0.9490643395405299
+        },
+        "per_class": {
+          "Facturation": {
+            "precision": 1.0,
+            "recall": 0.8846153846153846,
+            "f1": 0.9387755102040817,
+            "support": 26
+          },
+          "Support technique": {
+            "precision": 0.9285714285714286,
+            "recall": 0.9629629629629629,
+            "f1": 0.9454545454545454,
+            "support": 27
+          },
+          "Livraison": {
+            "precision": 0.9285714285714286,
+            "recall": 1.0,
+            "f1": 0.9629629629629629,
+            "support": 26
+          }
+        },
+        "confusion_matrix": [
+          [
+            23,
+            2,
+            1
+          ],
+          [
+            0,
+            26,
+            1
+          ],
+          [
+            0,
+            0,
+            26
+          ]
+        ],
+        "labels": [
+          "Facturation",
+          "Support technique",
+          "Livraison"
+        ]
+      }
+    },
+    "tfidf_complementnb": {
+      "name": "tfidf_complementnb",
+      "description": "TF-IDF mots + caractères, Naive Bayes complémentaire",
+      "best_params": {
+        "clf__alpha": 0.3,
+        "features__chars__ngram_range": [
+          2,
+          5
+        ],
+        "features__words__ngram_range": [
+          1,
+          2
+        ]
+      },
+      "cv_f1_macro_mean": 0.9562327017884268,
+      "cv_f1_macro_std": 0.02793218935470829,
+      "grid_size": 16,
+      "tuning_seconds": 2.3,
+      "validation": {
+        "accuracy": 0.9367088607594937,
+        "macro": {
+          "precision": 0.9427350427350428,
+          "recall": 0.9368471035137702,
+          "f1": 0.9369143883968682
+        },
+        "per_class": {
+          "Facturation": {
+            "precision": 1.0,
+            "recall": 0.8846153846153846,
+            "f1": 0.9387755102040817,
+            "support": 26
+          },
+          "Support technique": {
+            "precision": 0.9615384615384616,
+            "recall": 0.9259259259259259,
+            "f1": 0.9433962264150944,
+            "support": 27
+          },
+          "Livraison": {
+            "precision": 0.8666666666666667,
+            "recall": 1.0,
+            "f1": 0.9285714285714286,
+            "support": 26
+          }
+        },
+        "confusion_matrix": [
+          [
+            23,
+            1,
+            2
+          ],
+          [
+            0,
+            25,
+            2
+          ],
+          [
+            0,
+            0,
+            26
+          ]
+        ],
+        "labels": [
+          "Facturation",
+          "Support technique",
+          "Livraison"
+        ]
+      }
+    }
+  },
+  "chosen": "tfidf_linearsvc",
+  "calibrated_validation": {
+    "accuracy": 0.9367088607594937,
+    "macro": {
+      "precision": 0.9417077175697864,
+      "recall": 0.936372269705603,
+      "f1": 0.9358585858585858
+    },
+    "per_class": {
+      "Facturation": {
+        "precision": 1.0,
+        "recall": 0.8461538461538461,
+        "f1": 0.9166666666666666,
+        "support": 26
+      },
+      "Support technique": {
+        "precision": 0.9285714285714286,
+        "recall": 0.9629629629629629,
+        "f1": 0.9454545454545454,
+        "support": 27
+      },
+      "Livraison": {
+        "precision": 0.896551724137931,
+        "recall": 1.0,
+        "f1": 0.9454545454545454,
+        "support": 26
+      }
+    },
+    "confusion_matrix": [
+      [
+        22,
+        2,
+        2
+      ],
+      [
+        0,
+        26,
+        1
+      ],
+      [
+        0,
+        0,
+        26
+      ]
+    ],
+    "labels": [
+      "Facturation",
+      "Support technique",
+      "Livraison"
+    ]
+  },
+  "threshold": {
+    "value": 0.57,
+    "reached_target": true,
+    "target_precision": 0.95,
+    "operating_point": {
+      "threshold": 0.57,
+      "coverage": 0.9620253164556962,
+      "precision": 0.9605263157894737,
+      "accepted": 76,
+      "manual": 3,
+      "errors_accepted": 3,
+      "errors_sent_to_manual": 2
+    },
+    "curve": [
+      {
+        "threshold": 0.417794473971752,
+        "coverage": 1.0,
+        "precision": 0.9367088607594937,
+        "accepted": 79
+      },
+      {
+        "threshold": 0.5120076326947255,
+        "coverage": 0.9873417721518988,
+        "precision": 0.9487179487179487,
+        "accepted": 78
+      },
+      {
+        "threshold": 0.5560755751687949,
+        "coverage": 0.9746835443037974,
+        "precision": 0.948051948051948,
+        "accepted": 77
+      },
+      {
+        "threshold": 0.5725670406998677,
+        "coverage": 0.9620253164556962,
+        "precision": 0.9605263157894737,
+        "accepted": 76
+      },
+      {
+        "threshold": 0.5745294550136141,
+        "coverage": 0.9493670886075949,
+        "precision": 0.96,
+        "accepted": 75
+      },
+      {
+        "threshold": 0.5814609609194977,
+        "coverage": 0.9367088607594937,
+        "precision": 0.972972972972973,
+        "accepted": 74
+      },
+      {
+        "threshold": 0.5854993638066676,
+        "coverage": 0.9240506329113924,
+        "precision": 0.9726027397260274,
+        "accepted": 73
+      },
+      {
+        "threshold": 0.6065736384114961,
+        "coverage": 0.9113924050632911,
+        "precision": 0.9722222222222222,
+        "accepted": 72
+      },
+      {
+        "threshold": 0.6230938036810366,
+        "coverage": 0.8987341772151899,
+        "precision": 0.971830985915493,
+        "accepted": 71
+      },
+      {
+        "threshold": 0.6247508367848473,
+        "coverage": 0.8860759493670886,
+        "precision": 0.9714285714285714,
+        "accepted": 70
+      },
+      {
+        "threshold": 0.6609846533511919,
+        "coverage": 0.8734177215189873,
+        "precision": 0.9710144927536232,
+        "accepted": 69
+      },
+      {
+        "threshold": 0.6789529532404048,
+        "coverage": 0.8607594936708861,
+        "precision": 0.9705882352941176,
+        "accepted": 68
+      },
+      {
+        "threshold": 0.7090944181883698,
+        "coverage": 0.8481012658227848,
+        "precision": 0.9701492537313433,
+        "accepted": 67
+      },
+      {
+        "threshold": 0.7727778292134455,
+        "coverage": 0.8354430379746836,
+        "precision": 0.9848484848484849,
+        "accepted": 66
+      },
+      {
+        "threshold": 0.7916851585151653,
+        "coverage": 0.8227848101265823,
+        "precision": 0.9846153846153847,
+        "accepted": 65
+      },
+      {
+        "threshold": 0.7972267881492132,
+        "coverage": 0.810126582278481,
+        "precision": 1.0,
+        "accepted": 64
+      },
+      {
+        "threshold": 0.7972581668400524,
+        "coverage": 0.7974683544303798,
+        "precision": 1.0,
+        "accepted": 63
+      },
+      {
+        "threshold": 0.8013133077921125,
+        "coverage": 0.7848101265822784,
+        "precision": 1.0,
+        "accepted": 62
+      },
+      {
+        "threshold": 0.8053554655496639,
+        "coverage": 0.7721518987341772,
+        "precision": 1.0,
+        "accepted": 61
+      },
+      {
+        "threshold": 0.8167183029886141,
+        "coverage": 0.759493670886076,
+        "precision": 1.0,
+        "accepted": 60
+      },
+      {
+        "threshold": 0.8341240661917741,
+        "coverage": 0.7468354430379747,
+        "precision": 1.0,
+        "accepted": 59
+      },
+      {
+        "threshold": 0.8347713400098471,
+        "coverage": 0.7341772151898734,
+        "precision": 1.0,
+        "accepted": 58
+      },
+      {
+        "threshold": 0.8385369619409542,
+        "coverage": 0.7215189873417721,
+        "precision": 1.0,
+        "accepted": 57
+      },
+      {
+        "threshold": 0.8593783129366083,
+        "coverage": 0.7088607594936709,
+        "precision": 1.0,
+        "accepted": 56
+      },
+      {
+        "threshold": 0.8717422849839884,
+        "coverage": 0.6962025316455697,
+        "precision": 1.0,
+        "accepted": 55
+      },
+      {
+        "threshold": 0.8722727167236494,
+        "coverage": 0.6835443037974683,
+        "precision": 1.0,
+        "accepted": 54
+      },
+      {
+        "threshold": 0.8895014255438254,
+        "coverage": 0.6708860759493671,
+        "precision": 1.0,
+        "accepted": 53
+      },
+      {
+        "threshold": 0.8923948041855654,
+        "coverage": 0.6582278481012658,
+        "precision": 1.0,
+        "accepted": 52
+      },
+      {
+        "threshold": 0.8936631499436283,
+        "coverage": 0.6455696202531646,
+        "precision": 1.0,
+        "accepted": 51
+      },
+      {
+        "threshold": 0.9024382882888373,
+        "coverage": 0.6329113924050633,
+        "precision": 1.0,
+        "accepted": 50
+      },
+      {
+        "threshold": 0.9031220122245273,
+        "coverage": 0.620253164556962,
+        "precision": 1.0,
+        "accepted": 49
+      },
+      {
+        "threshold": 0.9069606450765466,
+        "coverage": 0.6075949367088608,
+        "precision": 1.0,
+        "accepted": 48
+      },
+      {
+        "threshold": 0.9088158503671184,
+        "coverage": 0.5949367088607594,
+        "precision": 1.0,
+        "accepted": 47
+      },
+      {
+        "threshold": 0.9193478273524525,
+        "coverage": 0.5822784810126582,
+        "precision": 1.0,
+        "accepted": 46
+      },
+      {
+        "threshold": 0.9193931998841558,
+        "coverage": 0.569620253164557,
+        "precision": 1.0,
+        "accepted": 45
+      },
+      {
+        "threshold": 0.9245038117919234,
+        "coverage": 0.5569620253164557,
+        "precision": 1.0,
+        "accepted": 44
+      },
+      {
+        "threshold": 0.925117570373509,
+        "coverage": 0.5443037974683544,
+        "precision": 1.0,
+        "accepted": 43
+      },
+      {
+        "threshold": 0.9259371129905668,
+        "coverage": 0.5316455696202531,
+        "precision": 1.0,
+        "accepted": 42
+      },
+      {
+        "threshold": 0.9259656160946246,
+        "coverage": 0.5189873417721519,
+        "precision": 1.0,
+        "accepted": 41
+      },
+      {
+        "threshold": 0.9269639127047059,
+        "coverage": 0.5063291139240507,
+        "precision": 1.0,
+        "accepted": 40
+      },
+      {
+        "threshold": 0.9300219220792956,
+        "coverage": 0.4936708860759494,
+        "precision": 1.0,
+        "accepted": 39
+      },
+      {
+        "threshold": 0.9314211081576133,
+        "coverage": 0.4810126582278481,
+        "precision": 1.0,
+        "accepted": 38
+      },
+      {
+        "threshold": 0.9331684356425441,
+        "coverage": 0.46835443037974683,
+        "precision": 1.0,
+        "accepted": 37
+      },
+      {
+        "threshold": 0.9365464018129979,
+        "coverage": 0.45569620253164556,
+        "precision": 1.0,
+        "accepted": 36
+      },
+      {
+        "threshold": 0.9372575113366383,
+        "coverage": 0.4430379746835443,
+        "precision": 1.0,
+        "accepted": 35
+      },
+      {
+        "threshold": 0.9383659437922741,
+        "coverage": 0.43037974683544306,
+        "precision": 1.0,
+        "accepted": 34
+      },
+      {
+        "threshold": 0.9386680720155983,
+        "coverage": 0.4177215189873418,
+        "precision": 1.0,
+        "accepted": 33
+      },
+      {
+        "threshold": 0.9412753246363558,
+        "coverage": 0.4050632911392405,
+        "precision": 1.0,
+        "accepted": 32
+      },
+      {
+        "threshold": 0.9417170197496795,
+        "coverage": 0.3924050632911392,
+        "precision": 1.0,
+        "accepted": 31
+      },
+      {
+        "threshold": 0.941825574830083,
+        "coverage": 0.379746835443038,
+        "precision": 1.0,
+        "accepted": 30
+      },
+      {
+        "threshold": 0.9423536901911616,
+        "coverage": 0.3670886075949367,
+        "precision": 1.0,
+        "accepted": 29
+      },
+      {
+        "threshold": 0.9439039737869924,
+        "coverage": 0.35443037974683544,
+        "precision": 1.0,
+        "accepted": 28
+      },
+      {
+        "threshold": 0.9484925330017824,
+        "coverage": 0.34177215189873417,
+        "precision": 1.0,
+        "accepted": 27
+      },
+      {
+        "threshold": 0.9486733620205327,
+        "coverage": 0.3291139240506329,
+        "precision": 1.0,
+        "accepted": 26
+      },
+      {
+        "threshold": 0.9487625414542602,
+        "coverage": 0.31645569620253167,
+        "precision": 1.0,
+        "accepted": 25
+      },
+      {
+        "threshold": 0.9491215902258544,
+        "coverage": 0.3037974683544304,
+        "precision": 1.0,
+        "accepted": 24
+      },
+      {
+        "threshold": 0.9500395275746645,
+        "coverage": 0.2911392405063291,
+        "precision": 1.0,
+        "accepted": 23
+      },
+      {
+        "threshold": 0.9572979514838721,
+        "coverage": 0.27848101265822783,
+        "precision": 1.0,
+        "accepted": 22
+      },
+      {
+        "threshold": 0.9589155285377842,
+        "coverage": 0.26582278481012656,
+        "precision": 1.0,
+        "accepted": 21
+      },
+      {
+        "threshold": 0.9590673631332803,
+        "coverage": 0.25316455696202533,
+        "precision": 1.0,
+        "accepted": 20
+      },
+      {
+        "threshold": 0.9622084025705055,
+        "coverage": 0.24050632911392406,
+        "precision": 1.0,
+        "accepted": 19
+      },
+      {
+        "threshold": 0.9622134814304006,
+        "coverage": 0.22784810126582278,
+        "precision": 1.0,
+        "accepted": 18
+      },
+      {
+        "threshold": 0.965570115711414,
+        "coverage": 0.21518987341772153,
+        "precision": 1.0,
+        "accepted": 17
+      },
+      {
+        "threshold": 0.9676564648871736,
+        "coverage": 0.20253164556962025,
+        "precision": 1.0,
+        "accepted": 16
+      },
+      {
+        "threshold": 0.9722191535253428,
+        "coverage": 0.189873417721519,
+        "precision": 1.0,
+        "accepted": 15
+      },
+      {
+        "threshold": 0.9751537410311062,
+        "coverage": 0.17721518987341772,
+        "precision": 1.0,
+        "accepted": 14
+      },
+      {
+        "threshold": 0.975164676905127,
+        "coverage": 0.16455696202531644,
+        "precision": 1.0,
+        "accepted": 13
+      },
+      {
+        "threshold": 0.9796470793656402,
+        "coverage": 0.1518987341772152,
+        "precision": 1.0,
+        "accepted": 12
+      },
+      {
+        "threshold": 0.9817203504679405,
+        "coverage": 0.13924050632911392,
+        "precision": 1.0,
+        "accepted": 11
+      },
+      {
+        "threshold": 0.9830739704825924,
+        "coverage": 0.12658227848101267,
+        "precision": 1.0,
+        "accepted": 10
+      },
+      {
+        "threshold": 0.9852437764737767,
+        "coverage": 0.11392405063291139,
+        "precision": 1.0,
+        "accepted": 9
+      },
+      {
+        "threshold": 0.9859331562385638,
+        "coverage": 0.10126582278481013,
+        "precision": 1.0,
+        "accepted": 8
+      },
+      {
+        "threshold": 0.98600372862461,
+        "coverage": 0.08860759493670886,
+        "precision": 1.0,
+        "accepted": 7
+      },
+      {
+        "threshold": 0.9893051489899006,
+        "coverage": 0.0759493670886076,
+        "precision": 1.0,
+        "accepted": 6
+      },
+      {
+        "threshold": 0.9905033176855274,
+        "coverage": 0.06329113924050633,
+        "precision": 1.0,
+        "accepted": 5
+      },
+      {
+        "threshold": 0.9919323344480174,
+        "coverage": 0.05063291139240506,
+        "precision": 1.0,
+        "accepted": 4
+      },
+      {
+        "threshold": 0.9933818072147009,
+        "coverage": 0.0379746835443038,
+        "precision": 1.0,
+        "accepted": 3
+      },
+      {
+        "threshold": 0.9939568621968473,
+        "coverage": 0.02531645569620253,
+        "precision": 1.0,
+        "accepted": 2
+      },
+      {
+        "threshold": 0.9948125373785928,
+        "coverage": 0.012658227848101266,
+        "precision": 1.0,
+        "accepted": 1
+      }
+    ]
+  },
+  "validation_predictions": [
+    {
+      "id": 8,
+      "true": "Facturation",
+      "pred": "Livraison",
+      "confidence": 0.7916851585151653
+    },
+    {
+      "id": 9,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.8013133077921125
+    },
+    {
+      "id": 14,
+      "true": "Facturation",
+      "pred": "Support technique",
+      "confidence": 0.7090944181883698
+    },
+    {
+      "id": 15,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.5120076326947255
+    },
+    {
+      "id": 22,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.6789529532404048
+    },
+    {
+      "id": 38,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9269639127047059
+    },
+    {
+      "id": 49,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9439039737869924
+    },
+    {
+      "id": 51,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.8341240661917741
+    },
+    {
+      "id": 55,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.8593783129366083
+    },
+    {
+      "id": 58,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9314211081576133
+    },
+    {
+      "id": 60,
+      "true": "Facturation",
+      "pred": "Livraison",
+      "confidence": 0.417794473971752
+    },
+    {
+      "id": 64,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9948125373785928
+    },
+    {
+      "id": 75,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.8722727167236494
+    },
+    {
+      "id": 84,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9031220122245273
+    },
+    {
+      "id": 89,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9412753246363558
+    },
+    {
+      "id": 92,
+      "true": "Facturation",
+      "pred": "Support technique",
+      "confidence": 0.5745294550136141
+    },
+    {
+      "id": 93,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9259371129905668
+    },
+    {
+      "id": 117,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.8347713400098471
+    },
+    {
+      "id": 130,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9859331562385638
+    },
+    {
+      "id": 131,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.925117570373509
+    },
+    {
+      "id": 148,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9300219220792956
+    },
+    {
+      "id": 150,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9590673631332803
+    },
+    {
+      "id": 155,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.6609846533511919
+    },
+    {
+      "id": 162,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.8167183029886141
+    },
+    {
+      "id": 163,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.9893051489899006
+    },
+    {
+      "id": 167,
+      "true": "Facturation",
+      "pred": "Facturation",
+      "confidence": 0.965570115711414
+    },
+    {
+      "id": 178,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.6247508367848473
+    },
+    {
+      "id": 194,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.8923948041855654
+    },
+    {
+      "id": 226,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9852437764737767
+    },
+    {
+      "id": 227,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.5814609609194977
+    },
+    {
+      "id": 237,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.7727778292134455
+    },
+    {
+      "id": 244,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.8895014255438254
+    },
+    {
+      "id": 245,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9933818072147009
+    },
+    {
+      "id": 246,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9830739704825924
+    },
+    {
+      "id": 256,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9259656160946246
+    },
+    {
+      "id": 268,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.98600372862461
+    },
+    {
+      "id": 271,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9423536901911616
+    },
+    {
+      "id": 273,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9088158503671184
+    },
+    {
+      "id": 278,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9386680720155983
+    },
+    {
+      "id": 293,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.8936631499436283
+    },
+    {
+      "id": 296,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.8385369619409542
+    },
+    {
+      "id": 298,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9193478273524525
+    },
+    {
+      "id": 299,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9487625414542602
+    },
+    {
+      "id": 302,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9817203504679405
+    },
+    {
+      "id": 306,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.8053554655496639
+    },
+    {
+      "id": 312,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9939568621968473
+    },
+    {
+      "id": 323,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9676564648871736
+    },
+    {
+      "id": 329,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9024382882888373
+    },
+    {
+      "id": 330,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9193931998841558
+    },
+    {
+      "id": 337,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.6065736384114961
+    },
+    {
+      "id": 344,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9919323344480174
+    },
+    {
+      "id": 349,
+      "true": "Livraison",
+      "pred": "Livraison",
+      "confidence": 0.9491215902258544
+    },
+    {
+      "id": 355,
+      "true": "Support technique",
+      "pred": "Livraison",
+      "confidence": 0.5560755751687949
+    },
+    {
+      "id": 386,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9622084025705055
+    },
+    {
+      "id": 389,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.5725670406998677
+    },
+    {
+      "id": 399,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.7972581668400524
+    },
+    {
+      "id": 400,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9589155285377842
+    },
+    {
+      "id": 401,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.975164676905127
+    },
+    {
+      "id": 403,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9484925330017824
+    },
+    {
+      "id": 405,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9796470793656402
+    },
+    {
+      "id": 410,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9365464018129979
+    },
+    {
+      "id": 415,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9905033176855274
+    },
+    {
+      "id": 420,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9500395275746645
+    },
+    {
+      "id": 436,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.6230938036810366
+    },
+    {
+      "id": 446,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9722191535253428
+    },
+    {
+      "id": 449,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9331684356425441
+    },
+    {
+      "id": 453,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9372575113366383
+    },
+    {
+      "id": 454,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.941825574830083
+    },
+    {
+      "id": 459,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9622134814304006
+    },
+    {
+      "id": 465,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.7972267881492132
+    },
+    {
+      "id": 475,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9383659437922741
+    },
+    {
+      "id": 485,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9245038117919234
+    },
+    {
+      "id": 487,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9417170197496795
+    },
+    {
+      "id": 493,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9486733620205327
+    },
+    {
+      "id": 502,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9069606450765466
+    },
+    {
+      "id": 511,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.8717422849839884
+    },
+    {
+      "id": 513,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.5854993638066676
+    },
+    {
+      "id": 518,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9572979514838721
+    },
+    {
+      "id": 520,
+      "true": "Support technique",
+      "pred": "Support technique",
+      "confidence": 0.9751537410311062
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# Environnement virtuel
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Fichiers générés lourds ou temporaires
+*.tmp
+model/*.joblib.tmp

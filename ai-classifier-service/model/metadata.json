@@ -1,0 +1,179 @@
+{
+  "model_version": "1.0.0",
+  "trained_at": "2026-11-15T22:29:38+00:00",
+  "model_name": "tfidf_linearsvc",
+  "model_description": "TF-IDF mots + caractères, SVM linéaire (LinearSVC)",
+  "hyperparameters": {
+    "clf__C": 3.0,
+    "features__chars__ngram_range": [
+      2,
+      5
+    ],
+    "features__words__ngram_range": [
+      1,
+      2
+    ]
+  },
+  "calibration": "CalibratedClassifierCV(method='sigmoid', cv=5) sur l'entraînement",
+  "confidence": "probabilité calibrée de la classe prédite",
+  "threshold": 0.57,
+  "threshold_rule": "plus petit seuil (couverture maximale) tel que la précision des prédictions acceptées sur la validation soit ≥ 95% (au moins 20 acceptées)",
+  "threshold_reached_target": true,
+  "min_alnum_chars": 3,
+  "categories": [
+    "Facturation",
+    "Livraison",
+    "Support technique"
+  ],
+  "category_to_service": {
+    "Facturation": "Facturation",
+    "Support technique": "Support technique",
+    "Livraison": "Livraison"
+  },
+  "seed": 42,
+  "dataset": {
+    "file": "data/claims.csv",
+    "sha256": "c062818a16a6d6908aadb8ba5e2ceb8545cbf887d81f7691c832b83fd6d84fb9",
+    "train": 367,
+    "validation": 79,
+    "test": 79
+  },
+  "validation_metrics": {
+    "accuracy": 0.9367088607594937,
+    "macro": {
+      "precision": 0.9417077175697864,
+      "recall": 0.936372269705603,
+      "f1": 0.9358585858585858
+    },
+    "per_class": {
+      "Facturation": {
+        "precision": 1.0,
+        "recall": 0.8461538461538461,
+        "f1": 0.9166666666666666,
+        "support": 26
+      },
+      "Support technique": {
+        "precision": 0.9285714285714286,
+        "recall": 0.9629629629629629,
+        "f1": 0.9454545454545454,
+        "support": 27
+      },
+      "Livraison": {
+        "precision": 0.896551724137931,
+        "recall": 1.0,
+        "f1": 0.9454545454545454,
+        "support": 26
+      }
+    },
+    "confusion_matrix": [
+      [
+        22,
+        2,
+        2
+      ],
+      [
+        0,
+        26,
+        1
+      ],
+      [
+        0,
+        0,
+        26
+      ]
+    ],
+    "labels": [
+      "Facturation",
+      "Support technique",
+      "Livraison"
+    ]
+  },
+  "validation_operating_point": {
+    "threshold": 0.57,
+    "coverage": 0.9620253164556962,
+    "precision": 0.9605263157894737,
+    "accepted": 76,
+    "manual": 3,
+    "errors_accepted": 3,
+    "errors_sent_to_manual": 2
+  },
+  "test_metrics": {
+    "accuracy": 0.9493670886075949,
+    "macro": {
+      "precision": 0.9513704686118479,
+      "recall": 0.9487179487179488,
+      "f1": 0.9491208791208791
+    },
+    "per_class": {
+      "Facturation": {
+        "precision": 1.0,
+        "recall": 0.9230769230769231,
+        "f1": 0.96,
+        "support": 26
+      },
+      "Support technique": {
+        "precision": 0.9230769230769231,
+        "recall": 0.9230769230769231,
+        "f1": 0.9230769230769231,
+        "support": 26
+      },
+      "Livraison": {
+        "precision": 0.9310344827586207,
+        "recall": 1.0,
+        "f1": 0.9642857142857143,
+        "support": 27
+      }
+    },
+    "confusion_matrix": [
+      [
+        24,
+        2,
+        0
+      ],
+      [
+        0,
+        24,
+        2
+      ],
+      [
+        0,
+        0,
+        27
+      ]
+    ],
+    "labels": [
+      "Facturation",
+      "Support technique",
+      "Livraison"
+    ]
+  },
+  "libraries": {
+    "python": "3.12.10",
+    "scikit-learn": "1.9.1",
+    "numpy": "2.5.5",
+    "scipy": "1.18.1",
+    "pandas": "3.1.1",
+    "joblib": "1.6.0",
+    "matplotlib": "3.11.2"
+  },
+  "test_operating_point": {
+    "threshold": 0.57,
+    "coverage": 0.9493670886075949,
+    "precision": 0.9733333333333334,
+    "accepted": 75,
+    "manual": 4,
+    "errors_accepted": 2,
+    "errors_sent_to_manual": 2
+  },
+  "inference_ms": {
+    "mean_ms": 25.855,
+    "median_ms": 24.63,
+    "p95_ms": 39.888,
+    "max_ms": 67.832,
+    "calls": 237,
+    "batch_ms_per_claim": 2.185,
+    "load_ms": 235.911,
+    "repeats": 3
+  },
+  "evaluated_at": "2026-11-15T22:30:16+00:00"
+}

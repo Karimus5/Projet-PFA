@@ -7,6 +7,8 @@ Cahier des charges : [`docs/cahier-des-charges.pdf`](docs/cahier-des-charges.pdf
 `auth-service` (8081, PostgreSQL `auth_db`), `claim-service` (8082, PostgreSQL `claim_db` :
 réclamations, statuts, commentaires, affectations, pièces jointes — classement manuel, l'IA viendra
 plus tard) et le **frontend React** (5173 : connexion, inscription, profil, gestion des utilisateurs).
+Module IA (`ai-classifier-service/`) : jeu de données, modèle entraîné et rapport d'évaluation
+prêts ; l'API FastAPI et l'intégration au claim-service viendront à l'étape suivante.
 
 **Mode d'exécution :** l'application s'exécute en local. Docker Compose ne lance que les bases de
 données et le broker de messages ; les services tournent directement avec Maven (et plus tard
@@ -17,6 +19,7 @@ Python et Node), sans conteneur.
 - Docker Desktop (uniquement pour PostgreSQL).
 - Maven n'est pas nécessaire : le projet fournit le wrapper `mvnw.cmd`.
 - Node.js ≥ 22.12 et npm (testé avec Node 22.20 / npm 10.9) pour le frontend.
+- Python 3.12 (testé avec 3.12.10, lanceur `py`) pour le module IA.
 
 Vérifier / corriger `JAVA_HOME` dans PowerShell (pour la session en cours) :
 ```powershell
@@ -56,6 +59,7 @@ Format du fichier : `CLE=valeur`, sans guillemets ni espaces autour de `=`, sans
 Les tests n'ont besoin ni de Docker ni des autres services (H2 en mémoire pour auth-service et
 claim-service ; les en-têtes de la gateway sont simulés dans les tests de claim-service).
 Frontend : `cd frontend; npm test; npm run build`.
+Module IA : `cd ai-classifier-service; .\venv\Scripts\python.exe -m pytest` (voir plus bas).
 
 ## Lancer la plateforme (dans cet ordre)
 Attendre que chaque service affiche `Started ...Application` avant de lancer le suivant.
@@ -478,6 +482,64 @@ Set-Content -Path "$env:TEMP\faux.pdf" -Value "pas un pdf"
 curl.exe -s -H "Authorization: Bearer $CA" -F "files=@$env:TEMP\faux.pdf" "$G/api/claims/$id2/attachments"                     # 400
 ```
 
+## Module IA de classification (`ai-classifier-service/`)
+Classe une réclamation (titre + description, en français) dans une catégorie (Facturation, Support
+technique, Livraison) ; le service se déduit de la catégorie (BF16, BF17). Fournit un score de
+confiance et un seuil en dessous duquel la réclamation part en classement manuel (BF18, BF19).
+**Étape actuelle : données et modèle uniquement** (pas encore d'API ni d'appel depuis claim-service).
+
+Résultats (jeu de test, utilisé une seule fois) et analyse détaillée :
+[`ai-classifier-service/reports/evaluation.md`](ai-classifier-service/reports/evaluation.md).
+
+### Installation (une fois)
+```powershell
+cd ai-classifier-service
+py -3.12 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+Les commandes ci-dessous appellent directement `.\venv\Scripts\python.exe`, ce qui évite d'activer le
+venv (sous PowerShell 5.1, `Activate.ps1` peut être bloqué par la stratégie d'exécution).
+
+### Commandes (depuis `ai-classifier-service/`)
+```powershell
+.\venv\Scripts\python.exe -m classifier.dataset    # data/raw/*.csv -> data/claims.csv + data/splits/ (dédoublonnage, 70/15/15)
+.\venv\Scripts\python.exe -m classifier.train      # réglage (CV sur l'entraînement), comparaison (validation), seuil -> model/
+.\venv\Scripts\python.exe -m classifier.evaluate   # évaluation finale sur le test -> reports/evaluation.md
+.\venv\Scripts\python.exe predict.py "Mon colis n'est jamais arrivé"
+.\venv\Scripts\python.exe predict.py --title "Double prélèvement" --description "Débité deux fois" --json
+.\venv\Scripts\python.exe -m pytest                # tests (jeu de données, découpage, prédiction)
+```
+Le modèle (`model/classifier.joblib`, ~1,1 Mo), ses métadonnées (`model/metadata.json`) et le
+rapport sont versionnés : `predict.py` et les tests fonctionnent sans réentraîner. Tout est
+déterministe (graine 42) : relancer les trois premières commandes redonne les mêmes chiffres
+(seuls les temps d'inférence varient).
+
+### Structure
+```
+ai-classifier-service/
+  requirements.txt       versions exactes (Python 3.12)
+  data/raw/              réclamations rédigées : une source par catégorie, compléments, cas ambigus annotés
+  data/claims.csv        jeu final (id, title, description, category, note) — généré
+  data/splits/           train.csv, val.csv, test.csv — générés
+  classifier/            config, text (normalisation), dataset, models, confidence, metrics,
+                         train, evaluate, predictor (chargement + classification, réutilisable par FastAPI)
+  model/                 classifier.joblib (modèle + métadonnées), metadata.json
+  reports/               evaluation.md, validation_results.json, figures/ (matrices de confusion, courbe)
+  predict.py             classification en ligne de commande
+  tests/                 pytest
+```
+
+### Décisions
+- Jeu de données rédigé pour le projet (525 réclamations, 175 par catégorie, 9 % de cas ambigus
+  justifiés dans `note`) ; règle d'étiquetage des cas ambigus : **le service qui doit agir sur la
+  cause principale**. Limites (jeu plus propre que la réalité, scores optimistes) : rapport §8.
+- TF-IDF mots + n-grammes de caractères ; comparaison régression logistique / LinearSVC /
+  Naive Bayes / base naïve. Retenu : **LinearSVC calibré** (probabilités sigmoïdes).
+- Confiance = probabilité calibrée de la catégorie prédite ; **seuil 0,57**, choisi sur la courbe
+  précision-couverture de la validation (précision ≥ 95 % avec couverture maximale).
+- Texte vide ou de moins de 3 caractères alphanumériques : pas de prédiction, classement manuel.
+- Pas de modèle d'embeddings (PyTorch + modèle ≈ 1 Go, gain incertain sur ce volume).
+
 ## PostgreSQL (Docker Compose)
 Docker Compose sert uniquement aux bases de données (et plus tard à RabbitMQ).
 ```powershell
@@ -509,6 +571,7 @@ api-gateway/          Spring Cloud Gateway — port 8080
 auth-service/         comptes, JWT, rôles — port 8081 (base auth_db)
 claim-service/        réclamations, statuts, commentaires, affectations, pièces jointes — port 8082 (base claim_db)
 frontend/             React + Vite + Tailwind — port 5173
+ai-classifier-service/ module IA (Python) : jeu de données, modèle, évaluation (API FastAPI à venir, port 8000)
 docker/postgres/init/ création des bases PostgreSQL (une par service)
 docs/                 cahier des charges
 docker-compose.yml    PostgreSQL
