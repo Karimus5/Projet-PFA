@@ -6,8 +6,10 @@ import { Spinner } from '../PageLoader';
 /**
  * Classement initial (admin, NEW → CLASSIFIED) ou correction de la catégorie et du service
  * (agent ou admin, statut conservé ; BF14). Service vide = service qui traite la catégorie.
+ * onCancel (facultatif) : bouton Annuler, quand le formulaire est ouvert par « Corriger » depuis le
+ * panneau de classification IA.
  */
-export default function ClassificationPanel({ claim, user, categories, services, onPerform }) {
+export default function ClassificationPanel({ claim, user, categories, services, onPerform, onCancel }) {
   const initial = canClassifyNew(claim, user);
   const [categoryId, setCategoryId] = useState(claim.category?.id ? String(claim.category.id) : '');
   const [serviceId, setServiceId] = useState('');
@@ -72,10 +74,17 @@ export default function ClassificationPanel({ claim, user, categories, services,
             ))}
           </select>
         </div>
-        <button type="submit" className="btn-primary" disabled={saving || categories.length === 0}>
-          {saving && <Spinner className="h-4 w-4" />}
-          {initial ? 'Classer' : 'Enregistrer la correction'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" className="btn-primary" disabled={saving || categories.length === 0}>
+            {saving && <Spinner className="h-4 w-4" />}
+            {initial ? 'Classer' : 'Enregistrer la correction'}
+          </button>
+          {onCancel && (
+            <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>
+              Annuler
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );

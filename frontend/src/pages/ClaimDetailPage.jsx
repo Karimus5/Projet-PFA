@@ -8,9 +8,12 @@ import {
   canClassifyNew,
   canCorrectClassification,
 } from '../claims/claimRules';
+import { canReviewAiClassification, isAiClassified } from '../claims/aiRules';
 import { describeError } from '../claims/errors';
 import Alert from '../components/Alert';
 import PageLoader from '../components/PageLoader';
+import AiBadge from '../components/claims/AiBadge';
+import AiClassificationPanel from '../components/claims/AiClassificationPanel';
 import AssignmentPanel from '../components/claims/AssignmentPanel';
 import AttachmentsSection from '../components/claims/AttachmentsSection';
 import ClassificationPanel from '../components/claims/ClassificationPanel';
@@ -120,7 +123,10 @@ export default function ClaimDetailPage() {
   }
 
   const panelKey = `${claim.id}-${claim.updatedAt}-${claim.status}`;
-  const showClassification = staff && (canClassifyNew(claim, user) || canCorrectClassification(claim, user));
+  // Classement IA en attente de décision : Confirmer / Corriger dans le panneau « Classification »,
+  // le formulaire de correction n'est ouvert que par « Corriger ».
+  const aiReview = canReviewAiClassification(claim, user);
+  const showClassification = staff && !aiReview && (canClassifyNew(claim, user) || canCorrectClassification(claim, user));
   const showAssignment = canAssign(claim, user);
 
   return (
@@ -168,20 +174,29 @@ export default function ClaimDetailPage() {
                 />
               )}
               {staff && <Info label="Client" value={claim.clientEmail} />}
-              {staff && claim.classificationSource && (
-                <Info
-                  label="Classement"
-                  value={`${claim.classificationSource === 'AI' ? 'IA' : 'Manuel'}${
-                    claim.confidenceScore != null ? ` (confiance ${Math.round(claim.confidenceScore * 100)} %)` : ''
-                  }`}
-                />
-              )}
             </dl>
+            {/* Client : seulement un badge, jamais la confiance ni la version du modèle. */}
+            {!staff && isAiClassified(claim) && (
+              <div className="mt-3">
+                <AiBadge variant="long" />
+              </div>
+            )}
           </section>
+
+          {staff && (
+            <AiClassificationPanel
+              key={`ia-${panelKey}`}
+              claim={claim}
+              user={user}
+              categories={references.categories}
+              services={references.services}
+              onPerform={perform}
+            />
+          )}
 
           <StatusActions key={`statut-${panelKey}`} claim={claim} user={user} onPerform={perform} />
 
-          {references.error && (showClassification || showAssignment) && (
+          {references.error && (showClassification || showAssignment || aiReview) && (
             <Alert type="error">Référentiels indisponibles : {references.error}</Alert>
           )}
           {showClassification && (

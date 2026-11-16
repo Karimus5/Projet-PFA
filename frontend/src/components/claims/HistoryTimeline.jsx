@@ -1,4 +1,4 @@
-import { ROLE_LABELS } from '../../config';
+import { AUTHOR_LABELS } from '../../config';
 import { formatDateTime } from '../../utils/format';
 import StatusBadge from './StatusBadge';
 
@@ -31,5 +31,5 @@ export default function HistoryTimeline({ history, currentUser }) {
 
 export function authorLabel(entry, currentUser) {
   if (currentUser && entry.authorId === currentUser.id && entry.authorRole === currentUser.role) return 'Vous';
-  return ROLE_LABELS[entry.authorRole] ?? entry.authorRole;
+  return AUTHOR_LABELS[entry.authorRole] ?? entry.authorRole;
 }

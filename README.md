@@ -156,12 +156,14 @@ copier `frontend/.env.example` en `frontend/.env`.
 | `/profil`                 | tous   | modifier son nom, changer son mot de passe en saisissant l'ancien |
 | `/reclamations`           | tous   | liste paginée (10 par page) filtrable par statut (`?statut=...&page=...` dans l'URL) ; client : « Mes réclamations » ; agent : réclamations de ses services ou affectées (badge « vous ») ; admin : toutes, bouton « Nouvelles à classer » |
 | `/reclamations/nouvelle`  | CLIENT | titre, description, pièces jointes facultatives (pas de catégorie : le classement est fait ensuite) |
-| `/reclamations/:id`       | tous   | détail, historique, commentaires, pièces jointes et actions selon le rôle (voir ci-dessous) |
+| `/reclamations/:id`       | tous   | détail, historique, commentaires, pièces jointes et actions selon le rôle (voir ci-dessous) ; panneau « Classification » (IA) pour les agents et admins |
 | `/admin/referentiels`     | ADMIN  | services et catégories (création, modification, suppression), agents rattachés à chaque service (choisis parmi les comptes AGENT actifs) |
 | `/admin/utilisateurs`     | ADMIN  | liste, création d'un agent ou admin, changement de rôle, activation/désactivation |
+| `/admin/ia`               | ADMIN  | « Intelligence artificielle » : indicateurs du classement automatique (`ai-stats`) en cartes expliquées, bouton « Exporter les corrections (CSV) » ; états chargement, erreur (Réessayer), aucune donnée |
 | `/403`, `*`               | —      | accès refusé, page introuvable |
 
-La barre de navigation s'adapte au rôle (« Statistiques » est encore marquée « Bientôt »).
+La barre de navigation s'adapte au rôle (« Statistiques » est encore marquée « Bientôt » ;
+« Intelligence artificielle » est disponible pour l'admin).
 
 **Règles d'affichage des réclamations** (`src/claims/claimRules.js`, copie des règles du
 claim-service : les actions interdites sont masquées, le serveur revérifie tout) :
@@ -177,16 +179,33 @@ claim-service : les actions interdites sont masquées, le serveur revérifie tou
 | Prendre en charge (ASSIGNED → IN_PROGRESS), Marquer comme résolue (IN_PROGRESS → RESOLVED) | — | oui | oui |
 | Clôturer / Rouvrir (RESOLVED → CLOSED / IN_PROGRESS) | oui | — | — |
 | Pièces jointes | ajout tant que la réclamation est ouverte et qu'il y en a moins de 5 ; téléchargement toujours | idem | idem |
+| Confirmer / Corriger la proposition de l'IA (BF14) | — | classement IA appliqué, non décidé, CLASSIFIED / ASSIGNED / IN_PROGRESS | idem |
 
+**Classification IA (étape 7b, `src/claims/aiRules.js`)** :
+
+| Élément | Client | Agent / admin |
+|---------|--------|---------------|
+| Catégorie et service | oui | oui |
+| Badge | « Classée automatiquement » si la source est l'IA | badge « IA » (liste et panneau) |
+| Panneau « Classification » : source, proposition, confiance (% tronqué, barre, niveau élevée ≥ 85 % / moyenne ≥ 57 % / faible), version du modèle, décision (confirmée / corrigée, par un agent ou un administrateur, date) | **jamais** | oui |
+| Classement non appliqué (confiance trop faible, catégorie inconnue, service IA indisponible) | rien (la réclamation est « Non classée ») | message clair, sans code technique |
+| Boutons **Confirmer** / **Corriger** | jamais | si `canReviewAiClassification` ; « Corriger » ouvre le formulaire de classification existant (bouton Annuler) |
+| Auteur `SYSTEM` (classement automatique) dans l'historique et les commentaires | « Système » (les traces internes ne lui sont jamais montrées) | « Système » |
+
+Limites (backend non modifié) : pas de filtre « À confirmer » (le serveur ne filtre que par statut
+et la liste n'indique pas si une proposition a été décidée) ; l'auteur d'une décision n'est connu
+que par son rôle ; le seuil 0,57 du modèle v1.0.0 est recopié dans `aiRules.js` (non renvoyé par
+l'API) ; `confidenceScore` reste présent dans le JSON reçu par le client (non affiché).
 Erreurs : message du serveur précédé de sa nature (« Action non autorisée » 403, « Introuvable »
-404, « Action impossible » 409) ; les 400 de validation s'affichent sous chaque champ. Après un
+404, « Action impossible » 409, « Requête invalide » 400) ; les 400 de validation s'affichent sous chaque champ. Après un
 409 ou un 404, la réclamation est rechargée (son état a pu changer entre-temps). Une réclamation
 non visible affiche « Réclamation introuvable ».
 
 **Pièces jointes** : contrôles côté client avant envoi (PDF, PNG ou JPG, 5 Mo par fichier,
 5 par réclamation ; le serveur vérifie en plus la signature du fichier). Le téléchargement se fait
 par `fetch` avec l'en-tête `Authorization`, puis enregistrement du fichier reçu (`Blob`) : le jeton
-n'apparaît jamais dans une URL. À la création, la réclamation est d'abord enregistrée puis les
+n'apparaît jamais dans une URL (même principe pour l'export CSV de la page « Intelligence
+artificielle »). À la création, la réclamation est d'abord enregistrée puis les
 fichiers envoyés ; si l'envoi échoue, la page de détail le signale et permet de réessayer.
 
 **Authentification** :
@@ -212,12 +231,14 @@ frontend/
     config.js, navigation.js     URL de l'API, libellés des rôles, menu par rôle
     api/                         client HTTP (client.js) et endpoints (authApi.js, claimsApi.js)
     auth/                        jeton, contexte d'authentification, routes protégées
-    claims/                      règles d'affichage par rôle et statut, pièces jointes, messages d'erreur
+    claims/                      règles d'affichage par rôle et statut, classification IA (aiRules.js),
+                                 pièces jointes, messages d'erreur
     components/                  mise en page, barre de navigation, champs, alertes
     components/claims/           badge de statut, pagination, historique, commentaires, pièces jointes,
-                                 actions de statut, classement, affectation, complément
+                                 actions de statut, classement, affectation, complément,
+                                 classification IA (AiClassificationPanel, AiBadge)
     pages/                       connexion, inscription, profil, réclamations (liste, création,
-                                 détail), admin (utilisateurs, référentiels), 403/404
+                                 détail), admin (utilisateurs, référentiels, IA), 403/404
     utils/                       validation et formatage
     test/                        tests Vitest et utilitaires
 ```
@@ -457,8 +478,6 @@ implémentation RabbitMQ annotée `@Primary` la remplacera sans modifier `ClaimS
   dans auth-service n'est pas répercuté. Détacher un agent d'un service ne lui retire pas les
   réclamations qui lui sont déjà affectées.
 - Les réclamations non classées par l'IA attendent le tri manuel de l'admin (`NEW → CLASSIFIED`).
-- Le frontend n'affiche pas encore de bouton « Confirmer » ni l'export, et affiche l'auteur
-  `SYSTEM` tel quel dans l'historique (libellé à ajouter à l'étape frontend).
 - Seules les décisions sur des classements **appliqués** par l'IA alimentent l'export : un tri
   manuel après une confiance trop basse n'y figure pas (piste d'amélioration pour BF20).
 

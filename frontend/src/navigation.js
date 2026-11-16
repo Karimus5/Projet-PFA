@@ -13,6 +13,7 @@ export const NAV_ITEMS = [
 
   { label: 'Référentiels', to: '/admin/referentiels', roles: ['ADMIN'], available: true }, // BF22
   { label: 'Utilisateurs', to: '/admin/utilisateurs', roles: ['ADMIN'], available: true }, // BF21
+  { label: 'Intelligence artificielle', to: '/admin/ia', roles: ['ADMIN'], available: true }, // BF20, BF25 (IA)
   { label: 'Statistiques', roles: ['ADMIN'], available: false }, // BF24-BF26
 
   { label: 'Mon profil', to: '/profil', roles: ['CLIENT', 'AGENT', 'ADMIN'], available: true },

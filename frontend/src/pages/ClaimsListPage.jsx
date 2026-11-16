@@ -7,7 +7,9 @@ import { describeError } from '../claims/errors';
 import Alert from '../components/Alert';
 import PageLoader from '../components/PageLoader';
 import Pagination from '../components/claims/Pagination';
+import AiBadge from '../components/claims/AiBadge';
 import StatusBadge from '../components/claims/StatusBadge';
+import { isAiClassified } from '../claims/aiRules';
 import { formatDateTime } from '../utils/format';
 
 const PAGE_SIZE = 10;
@@ -142,7 +144,10 @@ export default function ClaimsListPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={claim.status} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">{claim.category?.name ?? '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">
+                      {claim.category?.name ?? '—'}
+                      {staff && isAiClassified(claim) && <span className="ml-1.5"><AiBadge /></span>}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">{claim.service?.name ?? '—'}</td>
                     {staff && (
                       <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">

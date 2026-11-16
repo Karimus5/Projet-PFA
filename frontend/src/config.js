@@ -8,3 +8,10 @@ export const ROLE_LABELS = {
 };
 
 export const ROLES = Object.keys(ROLE_LABELS);
+
+/**
+ * Auteurs possibles dans l'historique et les commentaires : les rôles, plus SYSTEM (rôle interne du
+ * claim-service, auteur des classements automatiques). SYSTEM n'est PAS un rôle d'utilisateur :
+ * il n'apparaît jamais dans ROLES (choix de rôle de l'administration).
+ */
+export const AUTHOR_LABELS = { ...ROLE_LABELS, SYSTEM: 'Système' };

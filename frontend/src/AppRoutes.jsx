@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router';
 import { GuestOnlyRoute, HomeRedirect, ProtectedRoute } from './auth/RouteGuards';
 import Layout from './components/Layout';
+import AdminAiPage from './pages/AdminAiPage';
 import AdminReferencePage from './pages/AdminReferencePage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import ClaimDetailPage from './pages/ClaimDetailPage';
@@ -40,6 +41,7 @@ export default function AppRoutes() {
         <Route element={<ProtectedRoute roles={['ADMIN']} />}>
           <Route path="admin/utilisateurs" element={<AdminUsersPage />} />
           <Route path="admin/referentiels" element={<AdminReferencePage />} />
+          <Route path="admin/ia" element={<AdminAiPage />} />
         </Route>
 
         <Route path="403" element={<ForbiddenPage />} />

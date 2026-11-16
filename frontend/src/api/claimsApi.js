@@ -7,7 +7,9 @@ import { apiRequest } from './client';
  * ClaimSummary : { id, title, status, category, service, assignedAgent, classificationSource,
  *                  confidenceScore, createdAt, updatedAt }  (category/service = { id, name } | null,
  *                  assignedAgent = { id, name } | null)
- * ClaimDetail  : ClaimSummary + { description, clientId, clientEmail, history[], comments[], attachments[] }
+ * ClaimDetail  : ClaimSummary + { description, clientId, clientEmail, history[], comments[], attachments[],
+ *                aiPrediction }  (aiPrediction : agents et admins seulement, null pour un client ;
+ *                format dans claims/aiRules.js)
  * PageResponse : { content, page, size, totalElements, totalPages }
  */
 export const claimsApi = {
@@ -41,6 +43,13 @@ export const claimsApi = {
       body: { categoryId, serviceId: serviceId ?? undefined },
     }),
 
+  /**
+   * AGENT/ADMIN : confirme la catégorie et le service proposés par l'IA (BF14) → ClaimDetail.
+   * 409 si la classification ne vient pas de l'IA, est déjà confirmée / corrigée, ou statut terminé.
+   */
+  confirmClassification: (id) =>
+    apiRequest(`/api/claims/${id}/classification/confirmation`, { method: 'POST' }),
+
   /** AGENT/ADMIN : { serviceId, agentId? } → ClaimDetail (affectation ou réaffectation). */
   assign: (id, serviceId, agentId) =>
     apiRequest(`/api/claims/${id}/assignment`, {
@@ -67,6 +76,18 @@ export const claimsApi = {
   listServices: () => apiRequest('/api/claims/services'),
   /** → ServiceAgentResponse[] : { agentId, agentName, serviceId } */
   listServiceAgents: (serviceId) => apiRequest(`/api/claims/services/${serviceId}/agents`),
+
+  // --- Classement automatique : administration (ADMIN, BF20, BF25) ---
+
+  /**
+   * → { predictions, autoClassified, confirmed, corrected, awaitingReview, sentToManual,
+   *     lowConfidence, unknownCategory, unavailable, autoClassificationRate, correctionRate }
+   * (taux entre 0 et 1, null tant qu'il n'y a pas de donnée).
+   */
+  aiStats: () => apiRequest('/api/claims/admin/ai-stats'),
+
+  /** → Blob CSV des confirmations et corrections (appel authentifié, jeton jamais dans l'URL). */
+  exportAiFeedback: () => apiRequest('/api/claims/admin/ai-feedback/export', { responseType: 'blob' }),
 
   // --- Référentiels : écriture ADMIN ---
 

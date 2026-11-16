@@ -20,7 +20,7 @@ manuel si l'IA est indisponible ou peu confiante. Rôles : client, agent, admini
 | notification-service   | Spring Boot                | 8083  | notification_db| à faire  |
 | stats-service          | Spring Boot                | 8084  | stats_db       | à faire  |
 | ai-classifier-service  | Python / FastAPI / scikit-learn | 8000 | —        | fait (API, 127.0.0.1) |
-| frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth, admin, réclamations) |
+| frontend               | React + Vite + Tailwind    | 5173  | —              | fait (auth, admin, réclamations, IA) |
 
 Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service → ai-classifier-service avec timeout + disjoncteur + repli ;
 événements asynchrones RabbitMQ pour notifications et statistiques.
@@ -233,8 +233,26 @@ Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service
   formats date/heure/taille), `test/` (setup, `renderApp`, `mockApi`, données `claimDetail`,
   `assignedClaim`, `REFERENCE_HANDLERS`).
 - Routes : `/connexion`, `/inscription`, `/profil`, `/reclamations` et `/reclamations/:id` (tous
-  les rôles, contenu selon le rôle), `/reclamations/nouvelle` (CLIENT), `/admin/utilisateurs` et
-  `/admin/referentiels` (ADMIN), `/403`, `*` (404).
+  les rôles, contenu selon le rôle), `/reclamations/nouvelle` (CLIENT), `/admin/utilisateurs`,
+  `/admin/referentiels` et `/admin/ia` (ADMIN), `/403`, `*` (404).
+- Classification IA (étape 7b, backend NON modifié) :
+  - `claims/aiRules.js` = copie des règles serveur : `canReviewAiClassification` (staff, source AI,
+    aiPrediction.outcome APPLIED, decision null, CLASSIFIED/ASSIGNED/IN_PROGRESS), confiance
+    TRONQUÉE comme `ClaimService.percent`, niveaux (élevée ≥ 0,85, moyenne ≥ 0,57 = seuil v1.0.0
+    recopié car non renvoyé par l'API), textes des causes de repli (jamais le code technique).
+  - `components/claims/AiClassificationPanel.jsx` (staff seulement) : source, proposition, confiance
+    (barre `role="meter"` + badge), version, décision (par « un agent » / « un administrateur » :
+    le serveur ne renvoie que le rôle) ; Confirmer → `POST /{id}/classification/confirmation` ;
+    Corriger ouvre `ClassificationPanel` (prop `onCancel`). Si revue possible, le panneau de
+    correction autonome est masqué. Passe par `perform` (409/404 → rechargement).
+  - `AiBadge` : « IA » (listes, staff) / « Classée automatiquement » (client, détail). Le client ne
+    voit ni confiance ni version ni panneau.
+  - `config.js` : `AUTHOR_LABELS` = `ROLE_LABELS` + SYSTEM « Système » (utilisé par `authorLabel`) ;
+    ne PAS ajouter SYSTEM à `ROLE_LABELS`/`ROLES` (proposé sinon dans l'admin des utilisateurs).
+  - `pages/AdminAiPage.jsx` (`/admin/ia`, menu « Intelligence artificielle ») : cartes `ai-stats`,
+    export CSV par `exportAiFeedback` (blob + `saveBlob`, jeton jamais dans l'URL).
+  - Non fait car impossible sans backend : filtre « À confirmer » (filtre serveur = statut seul).
+  - Tests : `test/ai.test.jsx` (20 tests).
 - Réclamations (étape 5c) :
   - une seule liste et un seul détail pour les 3 rôles ; filtre statut + page dans l'URL
     (`?statut=&page=`, 10 par page). Seul filtre serveur disponible : le statut (limite signalée).
@@ -353,8 +371,9 @@ docker-compose.yml   PostgreSQL (puis RabbitMQ) uniquement
 3. ✅ claim-service sans IA (BF6–BF15, BF22, BF23) ; notification-service (BF10), stats-service
    (BF24–BF26) + RabbitMQ.
 4. ai-classifier-service : ✅ 6 (jeu de données, modèle, évaluation — 94,9 % accuracy / F1 macro
-   sur le test) ; ✅ 7a (API FastAPI + intégration claim-service, BF14, BF16–BF20, backend) ; à venir :
-   7b frontend (bouton Confirmer, libellé Système, export), notebook d'évaluation.
+   sur le test) ; ✅ 7a (API FastAPI + intégration claim-service, BF14, BF16–BF20, backend) ;
+   ✅ 7b (frontend : panneau Classification, Confirmer/Corriger, badge IA, page /admin/ia) ;
+   à venir : notebook d'évaluation.
 5. Frontend React : ✅ 5a (connexion, inscription, profil, admin utilisateurs) ; ✅ 5c (pages
    réclamations client/agent/admin, référentiels) ; à venir : tableau de bord (stats-service).
 6. Tests d'intégration, charge, évaluation du modèle.
