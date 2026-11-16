@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import Alert from '../components/Alert';
+import CenteredPage from '../components/CenteredPage';
 import FormField from '../components/FormField';
 import { Spinner } from '../components/PageLoader';
 import { compact, validateEmail } from '../utils/validation';
@@ -42,7 +43,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
+    <CenteredPage>
       <div className="card">
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Connexion</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Accédez à votre espace de suivi des réclamations.</p>
@@ -84,6 +85,6 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
-    </div>
+    </CenteredPage>
   );
 }

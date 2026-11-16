@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import Alert from '../components/Alert';
+import CenteredPage from '../components/CenteredPage';
 import FormField from '../components/FormField';
 import { Spinner } from '../components/PageLoader';
 import { compact, validateEmail, validateName, validatePassword } from '../utils/validation';
@@ -45,7 +46,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
+    <CenteredPage>
       <div className="card">
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Créer un compte</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Inscrivez-vous pour soumettre et suivre vos réclamations.</p>
@@ -79,6 +80,6 @@ export default function RegisterPage() {
           </Link>
         </p>
       </div>
-    </div>
+    </CenteredPage>
   );
 }
