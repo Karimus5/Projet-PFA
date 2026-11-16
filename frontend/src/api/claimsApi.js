@@ -4,19 +4,25 @@ import { apiRequest } from './client';
  * Endpoints du claim-service, via la gateway. Chemins et corps alignés sur claim-service
  * (ClaimController, ReferenceDataController, web/dto/Dtos.java).
  *
- * ClaimSummary : { id, title, status, category, service, assignedAgent, classificationSource,
- *                  confidenceScore, createdAt, updatedAt }  (category/service = { id, name } | null,
- *                  assignedAgent = { id, name } | null)
+ * ClaimSummary : { id, title, status, category, service, assignedAgent, autoClassified,
+ *                  classificationSource?, confidenceScore?, createdAt, updatedAt }
+ *                  (category/service = { id, name } | null, assignedAgent = { id, name } | null ;
+ *                  classificationSource et confidenceScore ABSENTS pour un client)
  * ClaimDetail  : ClaimSummary + { description, clientId, clientEmail, history[], comments[], attachments[],
  *                aiPrediction }  (aiPrediction : agents et admins seulement, null pour un client ;
  *                format dans claims/aiRules.js)
  * PageResponse : { content, page, size, totalElements, totalPages }
  */
 export const claimsApi = {
-  /** Réclamations visibles par l'appelant (client : les siennes ; agent : ses services ou affectées ; admin : toutes). */
-  list: ({ status, page = 0, size = 10 } = {}) => {
+  /**
+   * Réclamations visibles par l'appelant (client : les siennes ; agent : ses services ou affectées ;
+   * admin : toutes). toConfirm (agents et admins ; 403 pour un client) : classements IA ni confirmés
+   * ni corrigés, combinable avec status.
+   */
+  list: ({ status, toConfirm = false, page = 0, size = 10 } = {}) => {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (status) params.set('status', status);
+    if (toConfirm) params.set('toConfirm', 'true');
     return apiRequest(`/api/claims?${params}`);
   },
 

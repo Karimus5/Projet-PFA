@@ -42,6 +42,9 @@ export default function ClaimsListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const status = STATUSES.includes(searchParams.get('statut')) ? searchParams.get('statut') : '';
   const page = Math.max(0, Number.parseInt(searchParams.get('page') ?? '0', 10) || 0);
+  const staff = user.role !== 'CLIENT';
+  // « À confirmer » : agents et admins seulement (le serveur répond 403 à un client).
+  const toConfirm = staff && searchParams.get('aconfirmer') === '1';
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,27 +54,33 @@ export default function ClaimsListPage() {
     setLoading(true);
     setError(null);
     try {
-      setData(await claimsApi.list({ status: status || undefined, page, size: PAGE_SIZE }));
+      setData(await claimsApi.list({ status: status || undefined, toConfirm, page, size: PAGE_SIZE }));
     } catch (err) {
       setError(describeError(err));
     } finally {
       setLoading(false);
     }
-  }, [status, page]);
+  }, [status, toConfirm, page]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function updateParams(nextStatus, nextPage) {
+  /** Filtres et page dans l'URL : ?statut=...&aconfirmer=1&page=... (Retour du navigateur conservé). */
+  function updateParams(nextStatus, nextPage, nextToConfirm = toConfirm) {
     const params = {};
     if (nextStatus) params.statut = nextStatus;
+    if (nextToConfirm) params.aconfirmer = '1';
     if (nextPage > 0) params.page = String(nextPage);
     setSearchParams(params);
   }
 
-  const staff = user.role !== 'CLIENT';
   const claims = data?.content ?? [];
+  const emptyText = toConfirm
+    ? `Aucune réclamation à confirmer${status ? ` au statut « ${STATUS_LABELS[status]} »` : ''}.`
+    : status
+      ? `Aucune réclamation au statut « ${STATUS_LABELS[status]} ».`
+      : texts.empty;
 
   return (
     <div className="space-y-6">
@@ -99,8 +108,20 @@ export default function ClaimsListPage() {
             ))}
           </select>
         </div>
+        {staff && (
+          <label className="flex items-center gap-2 pb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 dark:bg-slate-800"
+              checked={toConfirm}
+              onChange={(e) => updateParams(status, 0, e.target.checked)}
+            />
+            À confirmer
+            <span className="font-normal text-slate-500 dark:text-slate-400">(classements IA non vérifiés)</span>
+          </label>
+        )}
         {user.role === 'ADMIN' && status !== 'NEW' && (
-          <button type="button" className="btn-secondary" onClick={() => updateParams('NEW', 0)}>
+          <button type="button" className="btn-secondary" onClick={() => updateParams('NEW', 0, false)}>
             Nouvelles à classer
           </button>
         )}
@@ -118,7 +139,7 @@ export default function ClaimsListPage() {
           </div>
         ) : claims.length === 0 ? (
           <p className="p-6 text-sm text-slate-500 dark:text-slate-400">
-            {status ? `Aucune réclamation au statut « ${STATUS_LABELS[status]} ».` : texts.empty}
+            {emptyText}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -178,7 +199,7 @@ export default function ClaimsListPage() {
           totalPages={data.totalPages}
           totalElements={data.totalElements}
           disabled={loading}
-          onChange={(next) => updateParams(status, next)}
+          onChange={(next) => updateParams(status, next, toConfirm)}
         />
       )}
     </div>

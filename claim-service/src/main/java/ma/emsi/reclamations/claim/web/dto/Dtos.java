@@ -1,5 +1,6 @@
 package ma.emsi.reclamations.claim.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -108,6 +109,10 @@ public final class Dtos {
     public record AgentRef(Long id, String name) {
     }
 
+    /**
+     * Résumé d'une réclamation. Pour un CLIENT, classificationSource et confidenceScore sont null et
+     * donc ABSENTS du JSON : il ne reçoit que la catégorie, le service et autoClassified.
+     */
     public record ClaimSummary(
             Long id,
             String title,
@@ -115,8 +120,9 @@ public final class Dtos {
             RefResponse category,
             RefResponse service,
             AgentRef assignedAgent,
-            ClassificationSource classificationSource,
-            Double confidenceScore,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ClassificationSource classificationSource,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Double confidenceScore,
+            boolean autoClassified,
             Instant createdAt,
             Instant updatedAt) {
     }
@@ -148,7 +154,11 @@ public final class Dtos {
             Instant uploadedAt) {
     }
 
-    /** Détail (BF8). Pour un client, comments ne contient jamais de commentaire interne. */
+    /**
+     * Détail (BF8). Pour un CLIENT : comments ne contient jamais de commentaire interne ;
+     * classificationSource, confidenceScore et aiPrediction sont absents du JSON (aucune donnée du
+     * modèle) ; autoClassified indique seulement si la catégorie actuelle vient de l'IA.
+     */
     public record ClaimDetail(
             Long id,
             String title,
@@ -159,19 +169,22 @@ public final class Dtos {
             RefResponse category,
             RefResponse service,
             AgentRef assignedAgent,
-            ClassificationSource classificationSource,
-            Double confidenceScore,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ClassificationSource classificationSource,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Double confidenceScore,
+            boolean autoClassified,
             Instant createdAt,
             Instant updatedAt,
             List<StatusHistoryResponse> history,
             List<CommentResponse> comments,
             List<AttachmentResponse> attachments,
-            AiPredictionResponse aiPrediction) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) AiPredictionResponse aiPrediction) {
     }
 
     /**
-     * Prédiction du service IA et retour d'information (agents et admins uniquement ; null pour un
-     * client ou si aucune prédiction n'a été demandée).
+     * Prédiction du service IA et retour d'information (agents et admins uniquement ; absente pour un
+     * client ou si aucune prédiction n'a été demandée). threshold = seuil du modèle utilisé pour
+     * cette prédiction (null si indisponible ou antérieure à l'étape 7c) ; decidedByName = nom de
+     * l'agent (null pour un admin : claim-service ne connaît pas son nom), jamais d'e-mail.
      */
     public record AiPredictionResponse(
             AiPredictionOutcome outcome,
@@ -180,11 +193,13 @@ public final class Dtos {
             String predictedService,
             Double confidence,
             String modelVersion,
+            Double threshold,
             Instant predictedAt,
             AiFeedbackDecision decision,
             String finalCategory,
             String finalService,
             UserRole decidedByRole,
+            String decidedByName,
             Instant decidedAt) {
     }
 

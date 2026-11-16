@@ -1,8 +1,11 @@
 package ma.emsi.reclamations.claim.service;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import ma.emsi.reclamations.claim.domain.AiPrediction;
 import ma.emsi.reclamations.claim.domain.Attachment;
+import ma.emsi.reclamations.claim.domain.ClassificationSource;
+import ma.emsi.reclamations.claim.security.UserRole;
 import ma.emsi.reclamations.claim.domain.Category;
 import ma.emsi.reclamations.claim.domain.Claim;
 import ma.emsi.reclamations.claim.domain.Comment;
@@ -27,32 +30,57 @@ final class DtoMapper {
     private DtoMapper() {
     }
 
-    static ClaimSummary summary(Claim c) {
+    /** Note d'un classement automatique : « … (92 %) » final (notes antérieures à l'étape 7c). */
+    private static final Pattern CONFIDENCE_IN_NOTE = Pattern.compile("\\s*\\(\\d+ %\\)\\s*$");
+
+    /**
+     * @param staff false pour un CLIENT : ni source, ni confiance (seulement autoClassified)
+     */
+    static ClaimSummary summary(Claim c, boolean staff) {
         return new ClaimSummary(c.getId(), c.getTitle(), c.getStatus(), category(c), service(c), agent(c),
-                c.getClassificationSource(), c.getConfidenceScore(), c.getCreatedAt(), c.getUpdatedAt());
+                staff ? c.getClassificationSource() : null, staff ? c.getConfidenceScore() : null,
+                autoClassified(c), c.getCreatedAt(), c.getUpdatedAt());
     }
 
-    /** @param prediction prédiction IA, ou null (absente, ou appelant client : jamais exposée au client) */
+    static boolean autoClassified(Claim c) {
+        return c.getClassificationSource() == ClassificationSource.AI;
+    }
+
+    /**
+     * @param staff      false pour un CLIENT : aucune donnée du modèle (source, confiance, prédiction,
+     *                   pourcentage dans les notes d'historique)
+     * @param prediction prédiction IA (ignorée si staff = false)
+     */
     static ClaimDetail detail(Claim c, List<StatusHistory> history, List<Comment> comments,
-                              List<Attachment> attachments, AiPrediction prediction) {
+                              List<Attachment> attachments, AiPrediction prediction, boolean staff) {
         return new ClaimDetail(c.getId(), c.getTitle(), c.getDescription(), c.getStatus(),
                 c.getClientId(), c.getClientEmail(), category(c), service(c), agent(c),
-                c.getClassificationSource(), c.getConfidenceScore(), c.getCreatedAt(), c.getUpdatedAt(),
-                history.stream().map(DtoMapper::history).toList(),
+                staff ? c.getClassificationSource() : null, staff ? c.getConfidenceScore() : null,
+                autoClassified(c), c.getCreatedAt(), c.getUpdatedAt(),
+                history.stream().map(h -> history(h, staff)).toList(),
                 comments.stream().map(DtoMapper::comment).toList(),
                 attachments.stream().map(DtoMapper::attachment).toList(),
-                prediction == null ? null : prediction(prediction));
+                staff && prediction != null ? prediction(prediction) : null);
     }
 
     static AiPredictionResponse prediction(AiPrediction p) {
         return new AiPredictionResponse(p.getOutcome(), p.getFailureReason(), p.getPredictedCategory(),
-                p.getPredictedService(), p.getConfidence(), p.getModelVersion(), p.getCreatedAt(),
-                p.getDecision(), p.getFinalCategory(), p.getFinalService(), p.getDecidedByRole(), p.getDecidedAt());
+                p.getPredictedService(), p.getConfidence(), p.getModelVersion(), p.getThreshold(), p.getCreatedAt(),
+                p.getDecision(), p.getFinalCategory(), p.getFinalService(), p.getDecidedByRole(),
+                p.getDecidedByName(), p.getDecidedAt());
     }
 
-    static StatusHistoryResponse history(StatusHistory h) {
+    /**
+     * Pour un client, le pourcentage de confiance est retiré des notes du classement automatique
+     * (auteur SYSTEM) écrites avant l'étape 7c (« Classement automatique : Livraison (99 %) »).
+     */
+    static StatusHistoryResponse history(StatusHistory h, boolean staff) {
+        String note = h.getNote();
+        if (!staff && note != null && h.getAuthorRole() == UserRole.SYSTEM) {
+            note = CONFIDENCE_IN_NOTE.matcher(note).replaceAll("");
+        }
         return new StatusHistoryResponse(h.getOldStatus(), h.getNewStatus(), h.getAuthorId(),
-                h.getAuthorRole(), h.getNote(), h.getChangedAt());
+                h.getAuthorRole(), note, h.getChangedAt());
     }
 
     static CommentResponse comment(Comment c) {

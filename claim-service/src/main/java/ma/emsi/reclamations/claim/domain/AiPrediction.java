@@ -52,6 +52,10 @@ public class AiPrediction {
     @Column(name = "model_version", length = 20, updatable = false)
     private String modelVersion;
 
+    /** Seuil de confiance du modèle au moment de la prédiction (renvoyé par le service IA). */
+    @Column(updatable = false)
+    private Double threshold;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -72,6 +76,10 @@ public class AiPrediction {
     @Column(name = "decided_by_role", length = 20)
     private UserRole decidedByRole;
 
+    /** Nom de l'agent (copie de service_agents) ; null pour un admin (nom inconnu de claim-service). */
+    @Column(name = "decided_by_name", length = 100)
+    private String decidedByName;
+
     @Column(name = "decided_at")
     private Instant decidedAt;
 
@@ -80,7 +88,7 @@ public class AiPrediction {
     }
 
     private AiPrediction(Claim claim, AiPredictionOutcome outcome, String failureReason, String predictedCategory,
-                         String predictedService, Double confidence, String modelVersion) {
+                         String predictedService, Double confidence, String modelVersion, Double threshold) {
         this.claim = claim;
         this.outcome = outcome;
         this.failureReason = failureReason;
@@ -88,15 +96,18 @@ public class AiPrediction {
         this.predictedService = predictedService;
         this.confidence = confidence;
         this.modelVersion = modelVersion;
+        this.threshold = threshold;
     }
 
     public static AiPrediction answered(Claim claim, AiPredictionOutcome outcome, String predictedCategory,
-                                        String predictedService, Double confidence, String modelVersion) {
-        return new AiPrediction(claim, outcome, null, predictedCategory, predictedService, confidence, modelVersion);
+                                        String predictedService, Double confidence, String modelVersion,
+                                        Double threshold) {
+        return new AiPrediction(claim, outcome, null, predictedCategory, predictedService, confidence, modelVersion,
+                threshold);
     }
 
     public static AiPrediction unavailable(Claim claim, String failureReason) {
-        return new AiPrediction(claim, AiPredictionOutcome.UNAVAILABLE, failureReason, null, null, null, null);
+        return new AiPrediction(claim, AiPredictionOutcome.UNAVAILABLE, failureReason, null, null, null, null, null);
     }
 
     @PrePersist
@@ -108,12 +119,13 @@ public class AiPrediction {
 
     /** Enregistre (ou remplace par la plus récente) la décision de l'agent / admin. */
     public void recordDecision(AiFeedbackDecision decision, String finalCategory, String finalService,
-                               Long decidedById, UserRole decidedByRole) {
+                               Long decidedById, UserRole decidedByRole, String decidedByName) {
         this.decision = decision;
         this.finalCategory = finalCategory;
         this.finalService = finalService;
         this.decidedById = decidedById;
         this.decidedByRole = decidedByRole;
+        this.decidedByName = decidedByName;
         this.decidedAt = Instant.now();
     }
 
@@ -151,6 +163,14 @@ public class AiPrediction {
 
     public String getModelVersion() {
         return modelVersion;
+    }
+
+    public Double getThreshold() {
+        return threshold;
+    }
+
+    public String getDecidedByName() {
+        return decidedByName;
     }
 
     public Instant getCreatedAt() {

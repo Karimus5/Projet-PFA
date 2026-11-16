@@ -48,6 +48,7 @@ import ma.emsi.reclamations.claim.web.dto.Dtos.StatusChangeRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -134,9 +135,21 @@ public class ClaimService {
 
     // --- Consultation (BF7, BF8, BF11) -----------------------------------------------------------
 
+    /**
+     * @param toConfirm true : seulement les classements IA à confirmer ou corriger (agents et admins ;
+     *                  403 pour un client), dans le périmètre de visibilité de l'appelant
+     */
     @Transactional(readOnly = true)
-    public PageResponse<ClaimSummary> list(CurrentUser user, ClaimStatus status, Pageable pageable) {
-        return PageResponse.of(claims.findAll(access.visibleTo(user, status), pageable).map(DtoMapper::summary));
+    public PageResponse<ClaimSummary> list(CurrentUser user, ClaimStatus status, boolean toConfirm, Pageable pageable) {
+        if (toConfirm && !user.role().isStaff()) {
+            throw ApiException.forbidden("Le filtre « à confirmer » est réservé aux agents et aux administrateurs");
+        }
+        Specification<Claim> filter = access.visibleTo(user, status);
+        if (toConfirm) {
+            filter = filter.and(ClaimAccess.awaitingAiReview());
+        }
+        boolean staff = user.role().isStaff();
+        return PageResponse.of(claims.findAll(filter, pageable).map(c -> DtoMapper.summary(c, staff)));
     }
 
     @Transactional(readOnly = true)
@@ -212,8 +225,9 @@ public class ClaimService {
             }
             claim.classify(category, service, ClassificationSource.MANUAL, null);
             comments.save(new Comment(claim, user.id(), user.role(), trace, true));
+            String deciderName = deciderName(user);
             prediction.ifPresent(p -> p.recordDecision(decision, category.getName(), service.getName(),
-                    user.id(), user.role()));
+                    user.id(), user.role(), deciderName));
             claims.flush();
             events.dispatchAfterCommit(ClaimEvent.of(ClaimEventType.CLASSIFICATION_CHANGED, claim, status, user));
             if (decision != null) {
@@ -249,7 +263,7 @@ public class ClaimService {
                     + (prediction.getDecision() == AiFeedbackDecision.CONFIRMED ? "confirmée" : "corrigée"));
         }
         prediction.recordDecision(AiFeedbackDecision.CONFIRMED, nameOf(claim.getCategory()),
-                nameOf(claim.getService()), user.id(), user.role());
+                nameOf(claim.getService()), user.id(), user.role(), deciderName(user));
         comments.save(new Comment(claim, user.id(), user.role(), "Classification IA confirmée : "
                 + nameOf(claim.getCategory()) + ", service " + nameOf(claim.getService()), true));
         claims.flush();
@@ -292,7 +306,7 @@ public class ClaimService {
         if (response.category() != null && category.isEmpty()) {
             predictions.save(AiPrediction.answered(claim, AiPredictionOutcome.UNKNOWN_CATEGORY,
                     truncate(response.category()), truncate(response.service()), response.confidence(),
-                    truncate(response.modelVersion())));
+                    truncate(response.modelVersion()), validThreshold(response.threshold())));
             internalNote(claim, "Classement automatique non appliqué : la catégorie proposée « "
                     + truncate(response.category()) + " » n'existe pas dans le référentiel. À classer manuellement.");
             return;
@@ -301,7 +315,7 @@ public class ClaimService {
             predictions.save(AiPrediction.answered(claim, AiPredictionOutcome.LOW_CONFIDENCE,
                     category.map(Category::getName).orElse(null),
                     category.map(c -> c.getService().getName()).orElse(null),
-                    response.confidence(), truncate(response.modelVersion())));
+                    response.confidence(), truncate(response.modelVersion()), validThreshold(response.threshold())));
             internalNote(claim, category.isEmpty()
                     ? "Classement automatique non appliqué : texte inexploitable. À classer manuellement."
                     : "Classement automatique non appliqué : confiance insuffisante ("
@@ -314,9 +328,10 @@ public class ClaimService {
         ProcessingService service = chosen.getService();
         claim.classify(chosen, service, ClassificationSource.AI, response.confidence());
         predictions.save(AiPrediction.answered(claim, AiPredictionOutcome.APPLIED, chosen.getName(),
-                service.getName(), response.confidence(), truncate(response.modelVersion())));
-        transition(claim, ClaimStatus.CLASSIFIED, system,
-                "Classement automatique : " + chosen.getName() + " (" + percent(response.confidence()) + ")");
+                service.getName(), response.confidence(), truncate(response.modelVersion()),
+                validThreshold(response.threshold())));
+        // Note d'historique visible du client : sans la confiance (donnée du modèle, réservée au staff).
+        transition(claim, ClaimStatus.CLASSIFIED, system, "Classement automatique : " + chosen.getName());
         events.dispatchAfterCommit(ClaimEvent.of(ClaimEventType.AUTO_CLASSIFIED, claim, ClaimStatus.NEW, system,
                 String.format(Locale.ROOT, "confidence=%.2f;model=%s", response.confidence(),
                         truncate(response.modelVersion()))));
@@ -403,7 +418,23 @@ public class ClaimService {
                 history.findByClaimIdOrderByChangedAtAscIdAsc(claim.getId()),
                 visibleComments,
                 attachments.findByClaimIdOrderByUploadedAtAscIdAsc(claim.getId()),
-                prediction);
+                prediction,
+                ClaimAccessPolicy.canSeeInternalComments(user));
+    }
+
+    /**
+     * Nom de l'auteur d'une décision, sans e-mail : pour un agent, le nom saisi par l'admin lors de
+     * son rattachement à un service ; pour un admin, null (claim-service ne connaît pas son nom).
+     */
+    private String deciderName(CurrentUser user) {
+        return user.isAgent()
+                ? serviceAgents.findFirstByAgentIdOrderByIdAsc(user.id()).map(ServiceAgent::getAgentName).orElse(null)
+                : null;
+    }
+
+    /** Seuil reçu du service IA, gardé seulement s'il est dans [0, 1]. */
+    private static Double validThreshold(Double threshold) {
+        return threshold != null && threshold >= 0 && threshold <= 1 ? threshold : null;
     }
 
     private void internalNote(Claim claim, String text) {

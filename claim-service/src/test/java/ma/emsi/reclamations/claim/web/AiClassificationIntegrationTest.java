@@ -110,14 +110,12 @@ class AiClassificationIntegrationTest {
                 .andExpect(jsonPath("$.status").value("CLASSIFIED"))
                 .andExpect(jsonPath("$.category.name").value("Livraison"))
                 .andExpect(jsonPath("$.service.name").value("Livraison"))
-                .andExpect(jsonPath("$.classificationSource").value("AI"))
-                .andExpect(jsonPath("$.confidenceScore").value(0.9234))
+                .andExpect(jsonPath("$.autoClassified").value(true))
                 .andExpect(jsonPath("$.history", hasSize(2)))
                 .andExpect(jsonPath("$.history[1].oldStatus").value("NEW"))
                 .andExpect(jsonPath("$.history[1].newStatus").value("CLASSIFIED"))
                 .andExpect(jsonPath("$.history[1].authorRole").value("SYSTEM"))
-                .andExpect(jsonPath("$.history[1].note").value("Classement automatique : Livraison (92 %)"))
-                .andExpect(jsonPath("$.aiPrediction").doesNotExist()) // jamais exposée au client
+                .andExpect(jsonPath("$.history[1].note").value("Classement automatique : Livraison"))
                 .andExpect(jsonPath("$.comments", hasSize(0)))
                 .andReturn().getResponse().getContentAsString();
 
@@ -127,9 +125,13 @@ class AiClassificationIntegrationTest {
                 .withRequestBody(equalToJson("{\"title\":\"Colis\",\"description\":\"Mon colis n'est jamais arrivé\"}")));
 
         admin.on(get("/api/claims/" + id(body)))
+                .andExpect(jsonPath("$.classificationSource").value("AI"))
+                .andExpect(jsonPath("$.confidenceScore").value(0.9234))
+                .andExpect(jsonPath("$.autoClassified").value(true))
                 .andExpect(jsonPath("$.aiPrediction.outcome").value("APPLIED"))
                 .andExpect(jsonPath("$.aiPrediction.predictedCategory").value("Livraison"))
                 .andExpect(jsonPath("$.aiPrediction.modelVersion").value("1.0.0"))
+                .andExpect(jsonPath("$.aiPrediction.threshold").value(0.57))
                 .andExpect(jsonPath("$.aiPrediction.decision").doesNotExist());
         // Visible de l'agent du service Livraison (service renseigné automatiquement).
         deliveryAgent.on(get("/api/claims/" + id(body))).andExpect(status().isOk());
@@ -231,6 +233,7 @@ class AiClassificationIntegrationTest {
                 .andExpect(jsonPath("$.aiPrediction.decision").value("CONFIRMED"))
                 .andExpect(jsonPath("$.aiPrediction.finalCategory").value("Livraison"))
                 .andExpect(jsonPath("$.aiPrediction.decidedByRole").value("AGENT"))
+                .andExpect(jsonPath("$.aiPrediction.decidedByName").value("Agent Livraison"))
                 .andExpect(jsonPath("$.comments[*].content", hasItem("Classification IA confirmée : Livraison, service Livraison")));
 
         // Déjà confirmée → 409 ; client → 403 ; agent d'un autre service (non visible) → 404.
@@ -329,6 +332,121 @@ class AiClassificationIntegrationTest {
                 .andExpect(jsonPath("$.comments", hasSize(0)))
                 .andExpect(jsonPath("$.aiPrediction").doesNotExist())
                 .andExpect(content().string(not(containsString("service IA"))));
+    }
+
+    // --- Étape 7c : aucune donnée du modèle pour le client, filtre « à confirmer », seuil, auteur -
+
+    @Test
+    void clientReceivesNoModelDataAnywhere() throws Exception {
+        long id = autoClassifiedDeliveryClaim();
+
+        String detail = client.on(get("/api/claims/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.category.name").value("Livraison"))
+                .andExpect(jsonPath("$.service.name").value("Livraison"))
+                .andExpect(jsonPath("$.autoClassified").value(true))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        String list = client.on(get("/api/claims"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].autoClassified").value(true))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        for (String json : List.of(detail, list)) {
+            assertThat(json).doesNotContain("classificationSource", "confidenceScore", "aiPrediction",
+                    "predictedCategory", "modelVersion", "threshold", "0.9234", "1.0.0", "%");
+        }
+    }
+
+    @Test
+    void staffKeepsModelDataInListAndDetail() throws Exception {
+        long id = autoClassifiedDeliveryClaim();
+        deliveryAgent.on(get("/api/claims"))
+                .andExpect(jsonPath("$.content[?(@.id == " + id + ")].classificationSource", hasItem("AI")))
+                .andExpect(jsonPath("$.content[?(@.id == " + id + ")].confidenceScore", hasItem(0.9234)))
+                .andExpect(jsonPath("$.content[?(@.id == " + id + ")].autoClassified", hasItem(true)));
+        deliveryAgent.on(get("/api/claims/" + id))
+                .andExpect(jsonPath("$.aiPrediction.confidence").value(0.9234))
+                .andExpect(jsonPath("$.aiPrediction.threshold").value(0.57));
+    }
+
+    @Test
+    void thresholdIsStoredForLowConfidenceToo() throws Exception {
+        stubAi(200, aiAnswer("Livraison", 0.40, false));
+        long id = id(create("bonjour", "bonjour").andReturn().getResponse().getContentAsString());
+        admin.on(get("/api/claims/" + id))
+                .andExpect(jsonPath("$.aiPrediction.outcome").value("LOW_CONFIDENCE"))
+                .andExpect(jsonPath("$.aiPrediction.threshold").value(0.57))
+                .andExpect(jsonPath("$.autoClassified").value(false));
+    }
+
+    @Test
+    void toConfirmFilterListsOnlyPendingAiClassificationsInCallerScope() throws Exception {
+        long pending = autoClassifiedDeliveryClaim();
+        long confirmed = autoClassifiedDeliveryClaim();
+        deliveryAgent.on(MockMvcRequestBuilders.post("/api/claims/" + confirmed + "/classification/confirmation"))
+                .andExpect(status().isOk());
+        long corrected = autoClassifiedDeliveryClaim();
+        admin.on(json(put("/api/claims/" + corrected + "/classification"), "{\"categoryId\":" + billingCategoryId + "}"))
+                .andExpect(status().isOk());
+        stubAi(200, aiAnswer("Livraison", 0.40, false));
+        long lowConfidence = id(create("bonjour", "bonjour").andReturn().getResponse().getContentAsString());
+
+        String agentPage = deliveryAgent.on(get("/api/claims").param("toConfirm", "true").param("size", "100"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Number> agentIds = JsonPath.read(agentPage, "$.content[*].id");
+        assertThat(agentIds).extracting(Number::longValue).contains(pending)
+                .doesNotContain(confirmed, corrected, lowConfidence);
+
+        String adminPage = admin.on(get("/api/claims").param("toConfirm", "true").param("size", "100"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Number> adminIds = JsonPath.read(adminPage, "$.content[*].id");
+        assertThat(adminIds).extracting(Number::longValue).contains(pending)
+                .doesNotContain(confirmed, corrected, lowConfidence);
+
+        // Hors du périmètre de l'agent Facturation (service Livraison) : absente de sa liste.
+        String billingPage = billingAgent.on(get("/api/claims").param("toConfirm", "true").param("size", "100"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Number> billingIds = JsonPath.read(billingPage, "$.content[*].id");
+        assertThat(billingIds).extracting(Number::longValue).doesNotContain(pending);
+
+        // Combinable avec le filtre de statut.
+        String assignedOnly = admin.on(get("/api/claims").param("toConfirm", "true").param("status", "ASSIGNED"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        List<Number> assignedIds = JsonPath.read(assignedOnly, "$.content[*].id");
+        assertThat(assignedIds).extracting(Number::longValue).doesNotContain(pending);
+    }
+
+    @Test
+    void toConfirmFilterIsForbiddenToClients() throws Exception {
+        client.on(get("/api/claims").param("toConfirm", "true"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Le filtre « à confirmer » est réservé aux agents et aux administrateurs"));
+        client.on(get("/api/claims").param("toConfirm", "false")).andExpect(status().isOk());
+    }
+
+    @Test
+    void adminDecisionHasRoleButNoName() throws Exception {
+        long id = autoClassifiedDeliveryClaim();
+        admin.on(MockMvcRequestBuilders.post("/api/claims/" + id + "/classification/confirmation"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aiPrediction.decidedByRole").value("ADMIN"))
+                .andExpect(jsonPath("$.aiPrediction.decidedByName").doesNotExist()); // nom d'admin inconnu
+    }
+
+    @Test
+    void agentCorrectionRecordsAgentName() throws Exception {
+        long id = autoClassifiedDeliveryClaim();
+        String body = deliveryAgent.on(json(put("/api/claims/" + id + "/classification"), "{\"categoryId\":" + billingCategoryId + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aiPrediction.decision").value("CORRECTED"))
+                .andExpect(jsonPath("$.aiPrediction.decidedByName").value("Agent Livraison"))
+                .andReturn().getResponse().getContentAsString();
+        String predictionJson = JsonPath.parse(body).read("$.aiPrediction").toString();
+        assertThat(predictionJson).doesNotContain("@");
     }
 
     // --- Utilitaires ------------------------------------------------------------------------------

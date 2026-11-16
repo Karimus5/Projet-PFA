@@ -153,8 +153,18 @@ Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service
   TRONQUÉE (`percent`) pour éviter « 57 % < 57 % ».
 - Table `ai_predictions` (Flyway V3, entité `AiPrediction`, une par réclamation, noms copiés sans FK) :
   outcome APPLIED / LOW_CONFIDENCE / UNKNOWN_CATEGORY / UNAVAILABLE (+ failure_reason), puis
-  decision CONFIRMED / CORRECTED + final_* + decided_by_*. `ClaimDetail.aiPrediction` : staff
-  seulement (null pour le client).
+  decision CONFIRMED / CORRECTED + final_* + decided_by_*. V4 (étape 7c) : `threshold` (seuil
+  renvoyé par le service IA, validé dans [0,1]) et `decided_by_name` (nom de l'AGENT copié de
+  `service_agents` via `findFirstByAgentIdOrderByIdAsc` ; null pour un admin, nom inconnu ; jamais
+  d'e-mail).
+- **Données du modèle selon le rôle (7c)** : `DtoMapper.summary/detail(..., staff)`. Client :
+  `classificationSource`, `confidenceScore` et `aiPrediction` à null → ABSENTS du JSON
+  (`@JsonInclude(NON_NULL)` dans `Dtos`) ; `autoClassified` (booléen) pour tous. Note d'historique
+  APPLIED écrite SANS pourcentage depuis 7c ; pour un client, `DtoMapper.history` retire « (NN %) »
+  des anciennes notes SYSTEM. Ne jamais réintroduire de donnée du modèle côté client.
+- Filtre `GET /api/claims?toConfirm=true` (7c) : `ClaimAccess.awaitingAiReview()` (source AI +
+  prédiction APPLIED sans décision (sous-requête) + `REVIEWABLE_STATUSES`) ET `visibleTo` ;
+  403 pour un client.
 - BF14 : `POST /{id}/classification/confirmation` (staff, prédiction APPLIED non encore décidée, source
   AI, statut CLASSIFIED/ASSIGNED/IN_PROGRESS, sinon 409) ; `PUT /{id}/classification` sur une
   prédiction APPLIED enregistre CORRECTED (ou CONFIRMED si identique), décision la plus récente.
@@ -165,10 +175,11 @@ Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service
   sensible).
 - Tests : `AiClassificationIntegrationTest` (WireMock : haute/basse confiance, catégorie inconnue,
   500, 401, réponse invalide, délai, disjoncteur, confirmation, correction, export, stats, SYSTEM),
-  `AiClassifierStoppedTest` (port fermé, disjoncteur de production), `CsvFieldTest`. Le .yml de test
+  `AiClassifierStoppedTest` (port fermé, disjoncteur de production), `CsvFieldTest`, `DtoMapperTest`
+  (7c : masquage client, nettoyage des notes). Le .yml de test
   met `ai-classifier.enabled: false` ; H2 partagé entre contextes → ids de test distincts (50 000+, 90 000+).
-- Limites : frontend sans bouton Confirmer ni libellé « Système » (affiche SYSTEM) ; tri manuel
-  après LOW_CONFIDENCE non exporté ; migration V3 testée sur H2 seulement (SQL identique à V1).
+- Limites : tri manuel après LOW_CONFIDENCE non exporté ; migrations V3 / V4 testées sur H2, V3
+  appliquée aussi sur PostgreSQL (V4 au prochain redémarrage).
 
 ## ai-classifier-service (étape 6 : données + modèle ; étape 7a : API)
 - Python **3.12** (seul installé : 3.12.10, lanceur `py -3.12`), venv `ai-classifier-service/venv`
@@ -236,13 +247,17 @@ Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service
   les rôles, contenu selon le rôle), `/reclamations/nouvelle` (CLIENT), `/admin/utilisateurs`,
   `/admin/referentiels` et `/admin/ia` (ADMIN), `/403`, `*` (404).
 - Classification IA (étape 7b, backend NON modifié) :
-  - `claims/aiRules.js` = copie des règles serveur : `canReviewAiClassification` (staff, source AI,
-    aiPrediction.outcome APPLIED, decision null, CLASSIFIED/ASSIGNED/IN_PROGRESS), confiance
-    TRONQUÉE comme `ClaimService.percent`, niveaux (élevée ≥ 0,85, moyenne ≥ 0,57 = seuil v1.0.0
-    recopié car non renvoyé par l'API), textes des causes de repli (jamais le code technique).
+  - `claims/aiRules.js` = copie des règles serveur : `canReviewAiClassification` (staff,
+    `autoClassified`, aiPrediction.outcome APPLIED, decision null, CLASSIFIED/ASSIGNED/IN_PROGRESS),
+    `isAiClassified` = `claim.autoClassified === true` (seul champ IA reçu par le client), confiance
+    TRONQUÉE comme `ClaimService.percent`, `thresholdOf(prediction)` = `aiPrediction.threshold`
+    sinon `DEFAULT_THRESHOLD` 0,57 (`fromApi: false` → « valeur par défaut » affiché),
+    `confidenceLevel(value, threshold)` : faible SOUS LE SEUIL d'abord, puis élevée ≥ max(0,85,
+    seuil), sinon moyenne ; `decidedByLabel` = `decidedByName`, sinon rôle (« un administrateur »).
+    Textes des causes de repli (jamais le code technique).
   - `components/claims/AiClassificationPanel.jsx` (staff seulement) : source, proposition, confiance
-    (barre `role="meter"` + badge), version, décision (par « un agent » / « un administrateur » :
-    le serveur ne renvoie que le rôle) ; Confirmer → `POST /{id}/classification/confirmation` ;
+    (barre `role="meter"` + badge), seuil du modèle, version, décision (« Confirmée par <nom> le … ») ;
+    Confirmer → `POST /{id}/classification/confirmation` ;
     Corriger ouvre `ClassificationPanel` (prop `onCancel`). Si revue possible, le panneau de
     correction autonome est masqué. Passe par `perform` (409/404 → rechargement).
   - `AiBadge` : « IA » (listes, staff) / « Classée automatiquement » (client, détail). Le client ne
@@ -251,11 +266,13 @@ Communication : REST synchrone (OpenFeign, URL fixe, pas d'Eureka) claim-service
     ne PAS ajouter SYSTEM à `ROLE_LABELS`/`ROLES` (proposé sinon dans l'admin des utilisateurs).
   - `pages/AdminAiPage.jsx` (`/admin/ia`, menu « Intelligence artificielle ») : cartes `ai-stats`,
     export CSV par `exportAiFeedback` (blob + `saveBlob`, jeton jamais dans l'URL).
-  - Non fait car impossible sans backend : filtre « À confirmer » (filtre serveur = statut seul).
-  - Tests : `test/ai.test.jsx` (20 tests).
+  - Liste (7d) : case « À confirmer » (agents et admins) → URL `?aconfirmer=1` (avec `statut`,
+    `page`) → `claimsApi.list({ toConfirm })` → `toConfirm=true`. Jamais envoyé pour un client
+    (même si l'URL le contient). « Nouvelles à classer » (admin) retire ce filtre.
+  - Tests : `test/ai.test.jsx` (29 tests ; fixture `clientView` = JSON réel d'un client depuis 7c).
 - Réclamations (étape 5c) :
   - une seule liste et un seul détail pour les 3 rôles ; filtre statut + page dans l'URL
-    (`?statut=&page=`, 10 par page). Seul filtre serveur disponible : le statut (limite signalée).
+    (`?statut=&page=`, 10 par page), plus « À confirmer » pour le staff (`?aconfirmer=1`, 7d).
   - `claims/claimRules.js` = copie de `ClaimStatus`/`ClaimWorkflow`/`ClaimService` (transitions par
     rôle, qui peut classer / corriger / affecter, commentaires internes, complément). Les actions
     interdites sont MASQUÉES (pas tentées) ; à mettre à jour si le workflow serveur change.

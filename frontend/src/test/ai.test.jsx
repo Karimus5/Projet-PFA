@@ -27,8 +27,9 @@ const REFERENCES = {
 function prediction(overrides = {}) {
   return {
     outcome: 'APPLIED', failureReason: null, predictedCategory: 'Livraison', predictedService: 'Livraison',
-    confidence: 0.9969, modelVersion: '1.0.0', predictedAt: '2026-11-15T10:00:00Z',
-    decision: null, finalCategory: null, finalService: null, decidedByRole: null, decidedAt: null,
+    confidence: 0.9969, modelVersion: '1.0.0', threshold: 0.57, predictedAt: '2026-11-15T10:00:00Z',
+    decision: null, finalCategory: null, finalService: null, decidedByRole: null, decidedByName: null,
+    decidedAt: null,
     ...overrides,
   };
 }
@@ -43,6 +44,7 @@ function aiClaim(overrides = {}) {
     service: LIVRAISON,
     classificationSource: 'AI',
     confidenceScore: 0.9969,
+    autoClassified: true,
     history: [
       { oldStatus: null, newStatus: 'NEW', authorId: CLIENT.id, authorRole: 'CLIENT', note: 'Réclamation soumise',
         changedAt: '2026-11-15T10:00:00Z' },
@@ -61,8 +63,52 @@ function page(content) {
   return { content, page: 0, size: 10, totalElements: content.length, totalPages: content.length ? 1 : 0 };
 }
 
+/** Réclamation classée par l'IA telle que la reçoit un CLIENT depuis l'étape 7c du claim-service. */
+function clientView(overrides = {}) {
+  return claimDetail({
+    title: 'Colis',
+    description: 'Mon colis n’est jamais arrivé',
+    status: 'CLASSIFIED',
+    category: LIVRAISON,
+    service: LIVRAISON,
+    autoClassified: true,
+    classificationSource: undefined,
+    confidenceScore: undefined,
+    history: [
+      { oldStatus: null, newStatus: 'NEW', authorId: CLIENT.id, authorRole: 'CLIENT', note: 'Réclamation soumise',
+        changedAt: '2026-11-15T10:00:00Z' },
+      { oldStatus: 'NEW', newStatus: 'CLASSIFIED', authorId: 0, authorRole: 'SYSTEM',
+        note: 'Classement automatique : Livraison', changedAt: '2026-11-15T10:00:01Z' },
+    ],
+    ...overrides,
+  });
+}
+
 describe('Classification IA : affichage selon le rôle', () => {
-  it('le client voit la catégorie et le badge « Classée automatiquement », jamais la confiance', async () => {
+  it('le badge client se base sur autoClassified (classificationSource n’est plus envoyé)', async () => {
+    tokenStorage.set('jeton-client');
+    mockApi({ ...me(CLIENT), 'GET /api/claims/42': { status: 200, body: clientView() } });
+    renderApp('/reclamations/42');
+
+    expect(await screen.findByRole('heading', { name: 'Colis' })).toBeInTheDocument();
+    expect(screen.getByText('Classée automatiquement')).toBeInTheDocument();
+    expect(screen.getByText('Classement automatique : Livraison')).toBeInTheDocument();
+    expect(screen.getByText(/Système/)).toBeInTheDocument();
+    expect(screen.queryByText(/confiance/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/v1\.0\.0|modèle/i)).not.toBeInTheDocument();
+  });
+
+  it('pas de badge client si autoClassified est faux (classement manuel)', async () => {
+    tokenStorage.set('jeton-client');
+    mockApi({ ...me(CLIENT), 'GET /api/claims/42': { status: 200, body: clientView({ autoClassified: false }) } });
+    renderApp('/reclamations/42');
+
+    expect(await screen.findByRole('heading', { name: 'Colis' })).toBeInTheDocument();
+    expect(screen.queryByText('Classée automatiquement')).not.toBeInTheDocument();
+  });
+
+  it('défense en profondeur : même si des données du modèle arrivaient, le client ne les voit pas', async () => {
     tokenStorage.set('jeton-client');
     // Même si une prédiction était renvoyée par erreur, l'interface client ne l'affiche pas.
     mockApi({ ...me(CLIENT), 'GET /api/claims/42': { status: 200, body: aiClaim() } });
@@ -163,7 +209,8 @@ describe('Confirmer et Corriger', () => {
   it.each([
     ['déjà confirmée', aiClaim({ aiPrediction: prediction({ decision: 'CONFIRMED', finalCategory: 'Livraison',
       finalService: 'Livraison', decidedByRole: 'AGENT', decidedAt: '2026-11-15T11:00:00Z' }) })],
-    ['classée manuellement', aiClaim({ classificationSource: 'MANUAL', confidenceScore: null, aiPrediction: null })],
+    ['classée manuellement', aiClaim({ classificationSource: 'MANUAL', confidenceScore: null, autoClassified: false,
+      aiPrediction: null })],
     ['résolue', aiClaim({ status: 'RESOLVED' })],
   ])('boutons masqués pour une réclamation %s', async (_, claim) => {
     tokenStorage.set('jeton-agent');
@@ -182,22 +229,68 @@ describe('Confirmer et Corriger', () => {
       'GET /api/claims/42': {
         status: 200,
         body: aiClaim({
-          classificationSource: 'MANUAL', category: FACTURATION, service: FACTURATION,
+          classificationSource: 'MANUAL', autoClassified: false, category: FACTURATION, service: FACTURATION,
           aiPrediction: prediction({ decision: 'CORRECTED', finalCategory: 'Facturation', finalService: 'Facturation',
-            decidedByRole: 'AGENT', decidedAt: '2026-11-15T11:00:00Z' }),
+            decidedByRole: 'AGENT', decidedByName: 'Arthur Agent', decidedAt: '2026-11-15T11:00:00Z' }),
         }),
       },
     });
     renderApp('/reclamations/42');
 
     expect(await screen.findByText('Corrigée')).toBeInTheDocument();
-    expect(screen.getByText(/par un agent le .* : Facturation \(service Facturation\)/)).toBeInTheDocument();
+    expect(screen.getByText(/par Arthur Agent le .* : Facturation \(service Facturation\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/par un agent/)).not.toBeInTheDocument();
+  });
+
+  it('le seuil vient de l’API : il fixe le niveau de confiance et est affiché', async () => {
+    tokenStorage.set('jeton-agent');
+    // Modèle plus exigeant (seuil 0,90) : 88 % devient une confiance faible.
+    mockApi({
+      ...me(AGENT), ...REFERENCES,
+      'GET /api/claims/42': { status: 200, body: aiClaim({ aiPrediction: prediction({ confidence: 0.88, threshold: 0.9 }) }) },
+    });
+    renderApp('/reclamations/42');
+
+    const panel = (await screen.findByRole('heading', { name: 'Classification' })).closest('section');
+    expect(within(panel).getByText('88 %')).toBeInTheDocument();
+    expect(within(panel).getByText('Confiance faible')).toBeInTheDocument();
+    expect(within(panel).getByText('Seuil du modèle').nextSibling).toHaveTextContent(/^90 %$/);
+    expect(within(panel).queryByText(/valeur par défaut/)).not.toBeInTheDocument();
+  });
+
+  it('seuil absent de l’API (ancienne prédiction) : valeur de repli signalée', async () => {
+    tokenStorage.set('jeton-agent');
+    mockApi({
+      ...me(AGENT), ...REFERENCES,
+      'GET /api/claims/42': { status: 200, body: aiClaim({ aiPrediction: prediction({ confidence: 0.7, threshold: null }) }) },
+    });
+    renderApp('/reclamations/42');
+
+    const panel = (await screen.findByRole('heading', { name: 'Classification' })).closest('section');
+    expect(within(panel).getByText('Seuil du modèle').nextSibling).toHaveTextContent('57 % (valeur par défaut)');
+    expect(within(panel).getByText('Confiance moyenne')).toBeInTheDocument();
+  });
+
+  it('nom de l’auteur affiché ; repli sur le rôle quand le nom est inconnu (admin)', async () => {
+    tokenStorage.set('jeton-admin');
+    mockApi({
+      ...me(ADMIN), ...REFERENCES,
+      'GET /api/claims/42': {
+        status: 200,
+        body: aiClaim({ aiPrediction: prediction({ decision: 'CONFIRMED', finalCategory: 'Livraison',
+          finalService: 'Livraison', decidedByRole: 'ADMIN', decidedByName: null, decidedAt: '2026-11-15T11:00:00Z' }) }),
+      },
+    });
+    renderApp('/reclamations/42');
+
+    expect(await screen.findByText(/par un administrateur le/)).toBeInTheDocument();
   });
 
   it('l’agent confirme la proposition de l’IA', async () => {
     tokenStorage.set('jeton-agent');
     const confirmed = aiClaim({ aiPrediction: prediction({ decision: 'CONFIRMED', finalCategory: 'Livraison',
-      finalService: 'Livraison', decidedByRole: 'AGENT', decidedAt: '2026-11-15T11:00:00Z' }),
+      finalService: 'Livraison', decidedByRole: 'AGENT', decidedByName: 'Arthur Agent',
+      decidedAt: '2026-11-15T11:00:00Z' }),
     updatedAt: '2026-11-15T11:00:00Z' });
     const fetchMock = mockApi({
       ...me(AGENT), ...REFERENCES,
@@ -212,6 +305,7 @@ describe('Confirmer et Corriger', () => {
     expect(await screen.findByText('Classification confirmée.')).toBeInTheDocument();
     expect(callsTo(fetchMock, 'POST', '/api/claims/42/classification/confirmation')).toHaveLength(1);
     expect(screen.getByText('Confirmée')).toBeInTheDocument();
+    expect(screen.getByText(/par Arthur Agent le/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Confirmer' })).not.toBeInTheDocument();
   });
 
@@ -222,7 +316,7 @@ describe('Confirmer et Corriger', () => {
       'GET /api/claims/42': { status: 200, body: aiClaim() },
       'PUT /api/claims/42/classification': {
         status: 200,
-        body: aiClaim({ classificationSource: 'MANUAL', category: FACTURATION, service: FACTURATION,
+        body: aiClaim({ classificationSource: 'MANUAL', autoClassified: false, category: FACTURATION, service: FACTURATION,
           updatedAt: '2026-11-15T11:00:00Z',
           aiPrediction: prediction({ decision: 'CORRECTED', finalCategory: 'Facturation', finalService: 'Facturation',
             decidedByRole: 'AGENT', decidedAt: '2026-11-15T11:00:00Z' }) }),
@@ -301,9 +395,9 @@ describe('Confirmer et Corriger', () => {
 describe('Liste : badge IA', () => {
   const list = page([
     { id: 42, title: 'Colis', status: 'CLASSIFIED', category: LIVRAISON, service: LIVRAISON, assignedAgent: null,
-      classificationSource: 'AI', confidenceScore: 0.99, updatedAt: '2026-11-15T10:00:00Z' },
+      classificationSource: 'AI', confidenceScore: 0.99, autoClassified: true, updatedAt: '2026-11-15T10:00:00Z' },
     { id: 41, title: 'Facture', status: 'CLASSIFIED', category: FACTURATION, service: FACTURATION, assignedAgent: null,
-      classificationSource: 'MANUAL', confidenceScore: null, updatedAt: '2026-11-14T10:00:00Z' },
+      classificationSource: 'MANUAL', confidenceScore: null, autoClassified: false, updatedAt: '2026-11-14T10:00:00Z' },
   ]);
 
   it('badge « IA » sur les réclamations classées automatiquement (agent)', async () => {
@@ -324,6 +418,92 @@ describe('Liste : badge IA', () => {
 
     await screen.findByRole('table');
     expect(screen.queryByLabelText('Classée automatiquement par l’IA')).not.toBeInTheDocument();
+  });
+});
+
+describe('Filtre « À confirmer »', () => {
+  it('l’agent filtre « À confirmer » : paramètre toConfirm envoyé, filtre et statut conservés dans l’URL', async () => {
+    tokenStorage.set('jeton-agent');
+    const fetchMock = mockApi({
+      ...me(AGENT),
+      'GET /api/claims': (init, url) => ({
+        status: 200,
+        body: url.searchParams.get('toConfirm') === 'true'
+          ? page([{ id: 42, title: 'Colis à vérifier', status: 'CLASSIFIED', category: LIVRAISON, service: LIVRAISON,
+            assignedAgent: null, classificationSource: 'AI', confidenceScore: 0.99, autoClassified: true,
+            updatedAt: '2026-11-15T10:00:00Z' }])
+          : page([]),
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp('/reclamations');
+
+    const checkbox = await screen.findByRole('checkbox', { name: /À confirmer/ });
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+
+    expect(await screen.findByRole('link', { name: 'Colis à vérifier' })).toBeInTheDocument();
+    expect(checkbox).toBeChecked();
+    let last = new URL(callsTo(fetchMock, 'GET', '/api/claims').at(-1)[0]);
+    expect(last.searchParams.get('toConfirm')).toBe('true');
+    expect(last.searchParams.get('page')).toBe('0');
+
+    // Combinable avec le statut ; une liste vide affiche un message dédié.
+    await user.selectOptions(screen.getByLabelText('Filtrer par statut'), 'ASSIGNED');
+    await waitFor(() => {
+      last = new URL(callsTo(fetchMock, 'GET', '/api/claims').at(-1)[0]);
+      expect(last.searchParams.get('status')).toBe('ASSIGNED');
+    });
+    expect(last.searchParams.get('toConfirm')).toBe('true');
+
+    await user.click(checkbox);
+    await waitFor(() => {
+      last = new URL(callsTo(fetchMock, 'GET', '/api/claims').at(-1)[0]);
+      expect(last.searchParams.has('toConfirm')).toBe(false);
+    });
+    expect(last.searchParams.get('status')).toBe('ASSIGNED');
+  });
+
+  it('le filtre est relu depuis l’URL (?aconfirmer=1) avec la page', async () => {
+    tokenStorage.set('jeton-admin');
+    const fetchMock = mockApi({
+      ...me(ADMIN),
+      'GET /api/claims': { status: 200, body: { content: [], page: 1, size: 10, totalElements: 11, totalPages: 2 } },
+    });
+    renderApp('/reclamations?aconfirmer=1&page=1');
+
+    expect(await screen.findByText('Aucune réclamation à confirmer.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /À confirmer/ })).toBeChecked();
+    const url = new URL(callsTo(fetchMock, 'GET', '/api/claims')[0][0]);
+    expect(url.searchParams.get('toConfirm')).toBe('true');
+    expect(url.searchParams.get('page')).toBe('1');
+  });
+
+  it('le client n’a pas ce filtre et ne l’envoie jamais, même via l’URL', async () => {
+    tokenStorage.set('jeton-client');
+    const fetchMock = mockApi({ ...me(CLIENT), 'GET /api/claims': { status: 200, body: page([]) } });
+    renderApp('/reclamations?aconfirmer=1');
+
+    expect(await screen.findByRole('heading', { name: 'Mes réclamations' })).toBeInTheDocument();
+    await waitFor(() => expect(callsTo(fetchMock, 'GET', '/api/claims').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('checkbox', { name: /À confirmer/ })).not.toBeInTheDocument();
+    expect(new URL(callsTo(fetchMock, 'GET', '/api/claims')[0][0]).searchParams.has('toConfirm')).toBe(false);
+  });
+
+  it('badge client dans la liste basé sur autoClassified : jamais affiché au client (liste staff uniquement)', async () => {
+    tokenStorage.set('jeton-agent');
+    mockApi({
+      ...me(AGENT),
+      'GET /api/claims': {
+        status: 200,
+        body: page([{ id: 42, title: 'Colis', status: 'CLASSIFIED', category: LIVRAISON, service: LIVRAISON,
+          assignedAgent: null, autoClassified: true, updatedAt: '2026-11-15T10:00:00Z' }]),
+      },
+    });
+    renderApp('/reclamations');
+
+    // Même sans classificationSource, autoClassified suffit pour le badge « IA ».
+    expect(await screen.findByLabelText('Classée automatiquement par l’IA')).toBeInTheDocument();
   });
 });
 

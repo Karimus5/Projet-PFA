@@ -154,7 +154,7 @@ copier `frontend/.env.example` en `frontend/.env`.
 |---------------------------|--------|---------|
 | `/connexion`, `/inscription` | public | validation côté client (email valide, mot de passe de 8 caractères minimum) |
 | `/profil`                 | tous   | modifier son nom, changer son mot de passe en saisissant l'ancien |
-| `/reclamations`           | tous   | liste paginée (10 par page) filtrable par statut (`?statut=...&page=...` dans l'URL) ; client : « Mes réclamations » ; agent : réclamations de ses services ou affectées (badge « vous ») ; admin : toutes, bouton « Nouvelles à classer » |
+| `/reclamations`           | tous   | liste paginée (10 par page) filtrable par statut (`?statut=...&page=...` dans l'URL) ; client : « Mes réclamations » ; agent : réclamations de ses services ou affectées (badge « vous ») ; admin : toutes, bouton « Nouvelles à classer » ; agents et admins : case **« À confirmer »** (`?aconfirmer=1`, envoie `toConfirm=true`, combinable avec le statut et la page) |
 | `/reclamations/nouvelle`  | CLIENT | titre, description, pièces jointes facultatives (pas de catégorie : le classement est fait ensuite) |
 | `/reclamations/:id`       | tous   | détail, historique, commentaires, pièces jointes et actions selon le rôle (voir ci-dessous) ; panneau « Classification » (IA) pour les agents et admins |
 | `/admin/referentiels`     | ADMIN  | services et catégories (création, modification, suppression), agents rattachés à chaque service (choisis parmi les comptes AGENT actifs) |
@@ -186,16 +186,15 @@ claim-service : les actions interdites sont masquées, le serveur revérifie tou
 | Élément | Client | Agent / admin |
 |---------|--------|---------------|
 | Catégorie et service | oui | oui |
-| Badge | « Classée automatiquement » si la source est l'IA | badge « IA » (liste et panneau) |
-| Panneau « Classification » : source, proposition, confiance (% tronqué, barre, niveau élevée ≥ 85 % / moyenne ≥ 57 % / faible), version du modèle, décision (confirmée / corrigée, par un agent ou un administrateur, date) | **jamais** | oui |
+| Badge | « Classée automatiquement » si `autoClassified` | badge « IA » si `autoClassified` (liste et panneau) |
+| Panneau « Classification » : source, proposition, confiance (% tronqué, barre, niveau : faible sous le seuil du modèle, élevée ≥ 85 %, moyenne entre les deux), **seuil du modèle** (`aiPrediction.threshold`, sinon 57 % signalé « valeur par défaut »), version du modèle, décision (« Confirmée par <nom> le … » ; rôle si le nom est inconnu, cas d'un admin) | **jamais** | oui |
 | Classement non appliqué (confiance trop faible, catégorie inconnue, service IA indisponible) | rien (la réclamation est « Non classée ») | message clair, sans code technique |
 | Boutons **Confirmer** / **Corriger** | jamais | si `canReviewAiClassification` ; « Corriger » ouvre le formulaire de classification existant (bouton Annuler) |
 | Auteur `SYSTEM` (classement automatique) dans l'historique et les commentaires | « Système » (les traces internes ne lui sont jamais montrées) | « Système » |
 
-Limites (backend non modifié) : pas de filtre « À confirmer » (le serveur ne filtre que par statut
-et la liste n'indique pas si une proposition a été décidée) ; l'auteur d'une décision n'est connu
-que par son rôle ; le seuil 0,57 du modèle v1.0.0 est recopié dans `aiRules.js` (non renvoyé par
-l'API) ; `confidenceScore` reste présent dans le JSON reçu par le client (non affiché).
+Depuis l'étape 7d, le frontend s'appuie sur les champs de l'étape 7c du claim-service :
+`autoClassified` (badges), `toConfirm` (filtre « À confirmer »), `aiPrediction.threshold` (seuil ;
+repli `DEFAULT_THRESHOLD` = 0,57 seulement s'il est absent) et `aiPrediction.decidedByName`.
 Erreurs : message du serveur précédé de sa nature (« Action non autorisée » 403, « Introuvable »
 404, « Action impossible » 409, « Requête invalide » 400) ; les 400 de validation s'affichent sous chaque champ. Après un
 409 ou un 404, la réclamation est rechargée (son état a pu changer entre-temps). Une réclamation
@@ -360,7 +359,7 @@ Tous les chemins sont sous `/api/claims`. claim-service identifie l'appelant par
 | Méthode | Chemin | Accès | Description |
 |---------|--------|-------|-------------|
 | POST  | `/api/claims` | CLIENT | soumettre `{title, description}` → 201, statut `CLASSIFIED` (classement IA) ou `NEW` (BF6, BF16-BF19) |
-| GET   | `/api/claims?status=&page=0&size=20` | tous | réclamations **visibles**, plus récentes d'abord, `size` ≤ 100 (BF7, BF11) |
+| GET   | `/api/claims?status=&toConfirm=&page=0&size=20` | tous | réclamations **visibles**, plus récentes d'abord, `size` ≤ 100 (BF7, BF11) ; `toConfirm=true` (AGENT/ADMIN, 403 pour un client) : classements IA ni confirmés ni corrigés, combinable avec `status` |
 | GET   | `/api/claims/{id}` | tous | détail + historique + commentaires + pièces jointes (BF8) |
 | POST  | `/api/claims/{id}/complements` | CLIENT propriétaire | `{text}` ajouté à la description, réclamation ouverte (BF9) |
 | POST  | `/api/claims/{id}/comments` | tous | `{content, internal?}` ; `internal: true` réservé aux agents/admins (BF13) |
@@ -428,7 +427,7 @@ téléchargement (`Content-Disposition: attachment`, `X-Content-Type-Options: no
 
 | Réponse du service IA | Résultat pour la réclamation |
 |---|---|
-| confiance ≥ seuil (0,57) et catégorie connue | `CLASSIFIED`, catégorie + service de la catégorie, source `AI`, `confidenceScore` ; historique `NEW → CLASSIFIED`, auteur `SYSTEM`, note « Classement automatique : Livraison (99 %) » |
+| confiance ≥ seuil (0,57) et catégorie connue | `CLASSIFIED`, catégorie + service de la catégorie, source `AI`, `confidenceScore` ; historique `NEW → CLASSIFIED`, auteur `SYSTEM`, note « Classement automatique : Livraison » (sans la confiance, visible du client) |
 | confiance sous le seuil / texte inexploitable | reste `NEW` + commentaire **interne** « confiance insuffisante (…) » |
 | catégorie absente du référentiel | reste `NEW` + commentaire interne |
 | erreur 4xx/5xx, réponse invalide, délai dépassé, service arrêté | reste `NEW` + commentaire interne (motif) |
@@ -444,8 +443,26 @@ Une confiance basse n'est pas un échec. Désactiver l'IA : `ai-classifier.enabl
 **Prédiction et retour d'information** : table `ai_predictions` (une par réclamation : catégorie
 et service proposés, confiance, version du modèle, résultat `APPLIED` / `LOW_CONFIDENCE` /
 `UNKNOWN_CATEGORY` / `UNAVAILABLE`, puis décision `CONFIRMED` / `CORRECTED`, catégorie et service
-finaux, auteur, date). Visible des agents et admins dans `aiPrediction` du détail (`null` pour un
-client). Une correction (`PUT /classification`) ou une confirmation laisse un commentaire interne.
+finaux, auteur, date). Visible des agents et admins dans `aiPrediction` du détail. Une correction
+(`PUT /classification`) ou une confirmation laisse un commentaire interne.
+
+`aiPrediction` (agents et admins) : `outcome`, `failureReason`, `predictedCategory`,
+`predictedService`, `confidence`, `modelVersion`, **`threshold`** (seuil du modèle utilisé pour
+cette prédiction, renvoyé par le service IA ; `null` si indisponible ou antérieur à l'étape 7c),
+`predictedAt`, `decision`, `finalCategory`, `finalService`, `decidedByRole`, **`decidedByName`**
+(nom de l'agent tel que saisi par l'admin lors du rattachement ; `null` pour un admin, dont
+claim-service ne connaît pas le nom ; jamais d'e-mail), `decidedAt`.
+
+**Ce que reçoit chaque rôle** (étape 7c) :
+
+| Champ (liste et détail) | Client | Agent / admin |
+|---|---|---|
+| `category`, `service` | oui | oui |
+| `autoClassified` (booléen : la catégorie actuelle vient de l'IA) | oui | oui |
+| `classificationSource`, `confidenceScore` | **absents du JSON** | oui |
+| `aiPrediction` (détail) | **absent** | oui |
+| notes d'historique du classement automatique | sans pourcentage (les anciennes notes « … (99 %) » sont nettoyées à l'affichage) | telles quelles |
+| commentaires internes (traces de l'IA) | jamais | oui |
 
 **Export CSV** (`GET /api/claims/admin/ai-feedback/export`, ADMIN) : UTF-8, virgules, champs entre
 guillemets, une ligne par confirmation / correction :

@@ -4,9 +4,12 @@
  * AiFailureReason). Elles servent UNIQUEMENT à afficher ou masquer : le serveur revérifie tout
  * (403 / 404 / 409). À mettre à jour si les règles du serveur changent.
  *
- * aiPrediction (ClaimDetail, agents et admins seulement ; null pour un client) :
- * { outcome, failureReason, predictedCategory, predictedService, confidence, modelVersion,
- *   predictedAt, decision, finalCategory, finalService, decidedByRole, decidedAt }
+ * Champs reçus (claim-service, étape 7c) :
+ * - tous les rôles : autoClassified (booléen : la catégorie actuelle vient de l'IA) ;
+ * - agents et admins seulement (ABSENTS pour un client) : classificationSource, confidenceScore,
+ *   aiPrediction = { outcome, failureReason, predictedCategory, predictedService, confidence,
+ *   modelVersion, threshold, predictedAt, decision, finalCategory, finalService, decidedByRole,
+ *   decidedByName, decidedAt }.
  */
 
 const STAFF = ['AGENT', 'ADMIN'];
@@ -15,25 +18,38 @@ const STAFF = ['AGENT', 'ADMIN'];
 const REVIEWABLE_STATUSES = ['CLASSIFIED', 'ASSIGNED', 'IN_PROGRESS'];
 
 /**
- * Seuil de confiance du modèle v1.0.0 (ai-classifier-service/model/metadata.json). Le serveur ne
- * le renvoie pas dans aiPrediction : il ne sert ici qu'à choisir la couleur du niveau de confiance.
+ * Seuil de REPLI, utilisé seulement quand aiPrediction.threshold est absent (prédiction antérieure
+ * à l'étape 7c du claim-service, ou service IA indisponible). Valeur du modèle v1.0.0 ; le panneau
+ * signale alors « valeur par défaut ». Le seuil réel vient toujours de l'API quand il est connu.
  */
-export const MODEL_THRESHOLD = 0.57;
+export const DEFAULT_THRESHOLD = 0.57;
+
+/** Au-delà, confiance « élevée » (choix d'affichage, indépendant du modèle). */
 export const HIGH_CONFIDENCE = 0.85;
+
+/** Seuil à utiliser pour une prédiction : celui renvoyé par l'API, sinon la valeur de repli. */
+export function thresholdOf(prediction) {
+  const value = prediction?.threshold;
+  const known = typeof value === 'number' && value >= 0 && value <= 1;
+  return { value: known ? value : DEFAULT_THRESHOLD, fromApi: known };
+}
 
 /** Classement automatique appliqué, pas encore confirmé ni corrigé : boutons Confirmer / Corriger. */
 export function canReviewAiClassification(claim, user) {
   const prediction = claim?.aiPrediction;
   return STAFF.includes(user?.role)
-    && claim?.classificationSource === 'AI'
+    && isAiClassified(claim)
     && prediction?.outcome === 'APPLIED'
     && !prediction.decision
     && REVIEWABLE_STATUSES.includes(claim.status);
 }
 
-/** Badge « IA » / « Classée automatiquement » : la catégorie actuelle vient du service IA. */
+/**
+ * Badge « IA » / « Classée automatiquement » : la catégorie actuelle vient du service IA.
+ * Basé sur autoClassified, envoyé à TOUS les rôles (classificationSource n'est plus envoyé au client).
+ */
 export function isAiClassified(claim) {
-  return claim?.classificationSource === 'AI';
+  return claim?.autoClassified === true;
 }
 
 /**
@@ -45,27 +61,32 @@ export function formatConfidence(value) {
   return `${Math.floor(Number(value) * 100 + 1e-9)} %`;
 }
 
-/** Niveau de confiance : libellé et couleurs (badge et barre). */
-export function confidenceLevel(value) {
+/**
+ * Niveau de confiance : libellé et couleurs (badge et barre).
+ * @param threshold seuil du modèle (thresholdOf(prediction).value) : en dessous, « faible »
+ */
+export function confidenceLevel(value, threshold = DEFAULT_THRESHOLD) {
   if (value == null) return null;
-  if (value >= HIGH_CONFIDENCE) {
+  // Le seuil du modèle passe en premier : sous le seuil, la confiance est toujours « faible »,
+  // même au-delà de HIGH_CONFIDENCE (ex. modèle exigeant, seuil 0,90 : 88 % reste faible).
+  if (value < threshold) {
+    return {
+      label: 'Confiance faible',
+      badge: 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200',
+      bar: 'bg-red-500 dark:bg-red-400',
+    };
+  }
+  if (value >= Math.max(HIGH_CONFIDENCE, threshold)) {
     return {
       label: 'Confiance élevée',
       badge: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200',
       bar: 'bg-emerald-500 dark:bg-emerald-400',
     };
   }
-  if (value >= MODEL_THRESHOLD) {
-    return {
-      label: 'Confiance moyenne',
-      badge: 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200',
-      bar: 'bg-amber-500 dark:bg-amber-400',
-    };
-  }
   return {
-    label: 'Confiance faible',
-    badge: 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200',
-    bar: 'bg-red-500 dark:bg-red-400',
+    label: 'Confiance moyenne',
+    badge: 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200',
+    bar: 'bg-amber-500 dark:bg-amber-400',
   };
 }
 
@@ -76,11 +97,18 @@ export const NOT_APPLIED_TEXTS = {
   UNAVAILABLE: 'Le service IA était indisponible lors de la soumission.',
 };
 
-/** Auteur d'une décision : le serveur ne renvoie que son rôle (ni nom ni identifiant). */
+/** Repli quand le nom de l'auteur est absent (admin : nom inconnu du claim-service). */
 export const DECIDED_BY_LABELS = {
   AGENT: 'un agent',
   ADMIN: 'un administrateur',
 };
+
+/** Auteur d'une décision : son nom (decidedByName) si connu, sinon son rôle. Jamais d'e-mail. */
+export function decidedByLabel(prediction) {
+  const name = prediction?.decidedByName?.trim();
+  if (name) return name;
+  return DECIDED_BY_LABELS[prediction?.decidedByRole] ?? null;
+}
 
 export const DECISION_LABELS = {
   CONFIRMED: 'Confirmée',

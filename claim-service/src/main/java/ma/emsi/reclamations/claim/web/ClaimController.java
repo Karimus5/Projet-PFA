@@ -74,17 +74,21 @@ public class ClaimController {
         return ResponseEntity.created(URI.create("/api/claims/" + created.id())).body(created);
     }
 
-    /** BF7 / BF11 — réclamations visibles par l'appelant, plus récentes d'abord. */
+    /**
+     * BF7 / BF11 — réclamations visibles par l'appelant, plus récentes d'abord. toConfirm=true :
+     * classements IA ni confirmés ni corrigés (agents et admins, 403 pour un client).
+     */
     @GetMapping
     PageResponse<ClaimSummary> list(CurrentUser user,
                                     @RequestParam(required = false) ClaimStatus status,
+                                    @RequestParam(defaultValue = "false") boolean toConfirm,
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw ApiException.badRequest("Pagination invalide : page ≥ 0 et 1 ≤ size ≤ " + MAX_PAGE_SIZE);
         }
         Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-        return claimService.list(user, status, PageRequest.of(page, size, sort));
+        return claimService.list(user, status, toConfirm, PageRequest.of(page, size, sort));
     }
 
     /** BF8 — détail, historique, commentaires (sans les internes pour un client), pièces jointes. */

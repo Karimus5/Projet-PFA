@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { claimsApi } from '../../api/claimsApi';
 import {
-  DECIDED_BY_LABELS,
   DECISION_LABELS,
   NOT_APPLIED_TEXTS,
   canReviewAiClassification,
   confidenceLevel,
+  decidedByLabel,
   formatConfidence,
+  isAiClassified,
+  thresholdOf,
 } from '../../claims/aiRules';
 import { formatDateTime } from '../../utils/format';
 import { Spinner } from '../PageLoader';
@@ -22,6 +24,8 @@ import ClassificationPanel from './ClassificationPanel';
 export default function AiClassificationPanel({ claim, user, categories, services, onPerform }) {
   const prediction = claim.aiPrediction;
   const reviewable = canReviewAiClassification(claim, user);
+  const threshold = thresholdOf(prediction);
+  const decidedBy = decidedByLabel(prediction);
   const [correcting, setCorrecting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -36,7 +40,7 @@ export default function AiClassificationPanel({ claim, user, categories, service
       <section className="card" aria-labelledby="classification-ia-titre">
         <div className="flex items-center justify-between gap-2">
           <h2 id="classification-ia-titre" className="text-lg font-medium text-slate-900 dark:text-slate-100">Classification</h2>
-          {claim.classificationSource === 'AI' && <AiBadge />}
+          {isAiClassified(claim) && <AiBadge />}
         </div>
 
         <dl className="mt-3 space-y-2 text-sm">
@@ -44,7 +48,15 @@ export default function AiClassificationPanel({ claim, user, categories, service
           {prediction && (prediction.predictedCategory || prediction.confidence != null) && (
             <>
               <Row label="Proposition de l’IA" value={proposal(prediction)} />
-              {prediction.confidence != null && <ConfidenceRow value={prediction.confidence} />}
+              {prediction.confidence != null && (
+                <>
+                  <ConfidenceRow value={prediction.confidence} threshold={threshold.value} />
+                  <Row
+                    label="Seuil du modèle"
+                    value={`${formatConfidence(threshold.value)}${threshold.fromApi ? '' : ' (valeur par défaut)'}`}
+                  />
+                </>
+              )}
             </>
           )}
           {prediction?.modelVersion && <Row label="Modèle" value={`v${prediction.modelVersion}`} />}
@@ -60,7 +72,7 @@ export default function AiClassificationPanel({ claim, user, categories, service
         {prediction?.decision && (
           <p className="mt-3 rounded-md bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
             <span className="font-medium">{DECISION_LABELS[prediction.decision] ?? prediction.decision}</span>
-            {prediction.decidedByRole && ` par ${DECIDED_BY_LABELS[prediction.decidedByRole] ?? prediction.decidedByRole}`}
+            {decidedBy && ` par ${decidedBy}`}
             {prediction.decidedAt && ` le ${formatDateTime(prediction.decidedAt)}`}
             {prediction.decision === 'CORRECTED' && prediction.finalCategory
               && ` : ${prediction.finalCategory} (service ${prediction.finalService ?? '—'})`}
@@ -100,7 +112,7 @@ export default function AiClassificationPanel({ claim, user, categories, service
 }
 
 function sourceLabel(claim) {
-  if (claim.classificationSource === 'AI') return 'Classement automatique (IA)';
+  if (isAiClassified(claim)) return 'Classement automatique (IA)';
   if (claim.classificationSource === 'MANUAL') return 'Classement manuel';
   return 'Non classée';
 }
@@ -121,9 +133,9 @@ function Row({ label, value }) {
   );
 }
 
-/** Confiance : pourcentage, badge de niveau et barre (BF18). */
-function ConfidenceRow({ value }) {
-  const level = confidenceLevel(value);
+/** Confiance : pourcentage, badge de niveau (selon le seuil du modèle) et barre (BF18). */
+function ConfidenceRow({ value, threshold }) {
+  const level = confidenceLevel(value, threshold);
   const width = Math.max(0, Math.min(100, Math.floor(value * 100)));
   return (
     <div>
